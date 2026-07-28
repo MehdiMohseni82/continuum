@@ -99,3 +99,10 @@ export type NotificationDto = {
 
 export type RagSource = { kind: "memory" | "event"; sessionId: string | null; sessionTitle: string | null; snippet: string };
 export type AskResponse = { answer: string; sources: RagSource[] };
+
+export type ModelUsage = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; costUsd: number };
+export type LabeledCost = { label: string; costUsd: number; tokens: number };
+export type TokenStats = {
+  totalInput: number; totalOutput: number; totalCacheRead: number; totalCacheWrite: number;
+  estimatedCostUsd: number; byModel: ModelUsage[]; byProject: LabeledCost[]; perDay: LabeledCost[];
+};

@@ -136,6 +136,9 @@ public static class ApiEndpoints
         api.MapGet("/analytics", async (AnalyticsService a, CancellationToken ct) =>
             Results.Ok(await a.GetAsync(ct)));
 
+        api.MapGet("/analytics/tokens", async (TokenAnalyticsService t, CancellationToken ct) =>
+            Results.Ok(await t.GetAsync(ct)));
+
         api.MapGet("/redaction/scan", async (RedactionReviewService r, CancellationToken ct, int scanLimit = 5000) =>
             Results.Ok(await r.ScanAsync(Math.Clamp(scanLimit, 100, 50000), ct)));
 

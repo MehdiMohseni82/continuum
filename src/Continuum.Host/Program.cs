@@ -58,6 +58,7 @@ builder.Services.Configure<MaintenanceOptions>(builder.Configuration.GetSection(
 builder.Services.AddScoped<MemoryMaintenanceService>();
 builder.Services.AddScoped<RetentionService>();
 builder.Services.AddScoped<AnalyticsService>();
+builder.Services.AddScoped<TokenAnalyticsService>();
 builder.Services.AddScoped<RedactionReviewService>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 
