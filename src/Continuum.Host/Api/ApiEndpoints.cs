@@ -70,6 +70,10 @@ public static class ApiEndpoints
         api.MapDelete("/memory/{id:guid}", async (Guid id, MemoryService mem, CancellationToken ct) =>
             await mem.ForgetAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
+        // Auto-memory extraction — manual trigger for one session (the worker does this on a schedule).
+        api.MapPost("/memory/extract/{sessionId:guid}", async (Guid sessionId, MemoryExtractionService ex, CancellationToken ct) =>
+            Results.Ok(new { extracted = await ex.ExtractAsync(sessionId, ct) }));
+
         // --- context checkpoints (Phase 2) ---
         api.MapPost("/checkpoints", async (CheckpointRequest req, CheckpointService cp, CancellationToken ct) =>
             Results.Ok(await cp.CreateAsync(req, ct)));

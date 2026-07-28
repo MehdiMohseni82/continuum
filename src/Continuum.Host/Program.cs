@@ -3,6 +3,7 @@ using Continuum.Host.Api;
 using Continuum.Host.Components;
 using Continuum.Host.Services;
 using Continuum.Core.Embeddings;
+using Continuum.Core.Generation;
 using Microsoft.EntityFrameworkCore;
 using Pgvector.EntityFrameworkCore;
 
@@ -31,6 +32,16 @@ switch (embeddingOptions.Provider.ToLowerInvariant())
         builder.Services.AddSingleton<IEmbedder, LocalHashEmbedder>();
         break;
 }
+
+// Generation (self-hosted LLM via Ollama) — powers auto-memory extraction (and RAG later).
+var genOptions = new GenerationOptions();
+builder.Configuration.GetSection("Generation").Bind(genOptions);
+builder.Services.AddSingleton(genOptions);
+builder.Services.AddHttpClient<IChatCompleter, OllamaChatCompleter>(h => h.Timeout = TimeSpan.FromMinutes(5));
+
+builder.Services.Configure<ExtractionOptions>(builder.Configuration.GetSection("Extraction"));
+builder.Services.AddScoped<MemoryExtractionService>();
+builder.Services.AddHostedService<ExtractionWorker>();
 
 builder.Services.AddScoped<IngestService>();
 builder.Services.AddScoped<HistoryService>();

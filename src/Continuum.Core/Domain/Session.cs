@@ -27,6 +27,9 @@ public class Session
     public DateTimeOffset LastEventAt { get; set; }
     public DateTimeOffset? EndedAt { get; set; }
 
+    /// <summary>When auto-memory extraction last ran for this session (null = not yet processed).</summary>
+    public DateTimeOffset? ExtractedAt { get; set; }
+
     public int MessageCount { get; set; }
 
     public List<Event> Events { get; } = [];

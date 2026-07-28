@@ -16,8 +16,34 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder)
     {
         var redacted = SecretRedactor.Redact(req.Content).Text;
         var embedding = new Vector(await embedder.EmbedAsync(redacted, ct));
-        var now = DateTimeOffset.UtcNow;
+        return await PersistAsync(req, redacted, embedding, ct);
+    }
 
+    /// <summary>
+    /// Save only if no existing memory in the same scope is within <paramref name="duplicateThreshold"/>
+    /// cosine distance. Used by auto-extraction to avoid flooding the store with near-duplicates.
+    /// Returns null when skipped.
+    /// </summary>
+    public async Task<MemoryDto?> SaveDistinctAsync(MemorySaveRequest req, double duplicateThreshold, CancellationToken ct)
+    {
+        var redacted = SecretRedactor.Redact(req.Content).Text;
+        var embedding = new Vector(await embedder.EmbedAsync(redacted, ct));
+
+        var scope = db.Memories.Where(m => m.Embedding != null);
+        if (req.WorkspaceId is { } w) scope = scope.Where(m => m.WorkspaceId == w || m.WorkspaceId == null);
+
+        var nearest = await scope
+            .Select(m => (double?)m.Embedding!.CosineDistance(embedding))
+            .OrderBy(d => d)
+            .FirstOrDefaultAsync(ct);
+
+        if (nearest is { } d && d < duplicateThreshold) return null;
+        return await PersistAsync(req, redacted, embedding, ct);
+    }
+
+    private async Task<MemoryDto> PersistAsync(MemorySaveRequest req, string redacted, Vector embedding, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
         var item = new MemoryItem
         {
             Id = Guid.NewGuid(),

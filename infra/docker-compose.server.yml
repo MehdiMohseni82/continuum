@@ -37,7 +37,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: "http://ollama:11434"
-    entrypoint: ["sh", "-c", "ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
+    entrypoint: ["sh", "-c", "ollama pull ${EMBEDDING_MODEL:-nomic-embed-text} && ollama pull ${GENERATION_MODEL:-qwen2.5:7b-instruct}"]
     restart: "no"
 
   host:
@@ -51,6 +51,8 @@ services:
       Embeddings__Provider: "ollama"
       Embeddings__Endpoint: "http://ollama:11434"
       Embeddings__Model: "${EMBEDDING_MODEL:-nomic-embed-text}"
+      Generation__Endpoint: "http://ollama:11434"
+      Generation__Model: "${GENERATION_MODEL:-qwen2.5:7b-instruct}"
       ASPNETCORE_HTTP_PORTS: "5000"
     ports:
       - "127.0.0.1:5050:5000"
