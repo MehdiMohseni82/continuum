@@ -1,0 +1,35 @@
+name: deploy
+
+# Manual deploy to dt-prod-01. Requires two repo secrets:
+#   SERVER_HOST     -> 152.53.226.44
+#   SERVER_SSH_KEY  -> the private key that can SSH as root to the server
+# It syncs the source to /opt/continuum and rebuilds the host + web containers.
+# The server's infra/.env (secrets) is never overwritten — it's excluded from the sync.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync source to server
+        run: |
+          rsync -az \
+            --exclude node_modules --exclude .next --exclude .git \
+            --exclude 'bin/' --exclude 'obj/' --exclude '.env*' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ "root@${{ secrets.SERVER_HOST }}:/opt/continuum/"
+
+      - name: Rebuild + restart containers
+        run: |
+          ssh -i ~/.ssh/deploy_key "root@${{ secrets.SERVER_HOST }}" \
+            'cd /opt/continuum/infra && docker compose -f docker-compose.server.yml -p continuum up -d --build host web'

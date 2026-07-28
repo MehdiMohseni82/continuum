@@ -1,0 +1,57 @@
+name: images
+
+# Build the container images and publish them to GitHub Container Registry (GHCR).
+# Uses the built-in GITHUB_TOKEN — no extra secrets needed. Images:
+#   ghcr.io/mehdimohseni82/continuum-host   (API + Blazor)
+#   ghcr.io/mehdimohseni82/continuum-daemon (session-tailing worker)
+#   ghcr.io/mehdimohseni82/continuum-web    (Next.js UI)
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: host
+            context: "."
+            dockerfile: src/Continuum.Host/Dockerfile
+          - name: daemon
+            context: "."
+            dockerfile: src/Continuum.Daemon/Dockerfile
+          - name: web
+            context: web
+            dockerfile: web/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/mehdimohseni82/continuum-${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

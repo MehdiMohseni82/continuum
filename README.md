@@ -1,5 +1,8 @@
 # Continuum
 
+[![CI](https://github.com/MehdiMohseni82/continuum/actions/workflows/ci.yml/badge.svg)](https://github.com/MehdiMohseni82/continuum/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 An external brain and sync backbone for Claude Code. It captures every session, carries
 context between machines, gives Claude a **durable memory** it can't forget, and lets
 parallel agents **talk to each other** — with an API, a Blazor UI, and an MCP server on top.
