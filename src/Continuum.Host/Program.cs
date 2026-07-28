@@ -41,6 +41,7 @@ builder.Services.AddHttpClient<IChatCompleter, OllamaChatCompleter>(h => h.Timeo
 
 builder.Services.Configure<ExtractionOptions>(builder.Configuration.GetSection("Extraction"));
 builder.Services.AddScoped<MemoryExtractionService>();
+builder.Services.AddScoped<RagService>();
 builder.Services.AddHostedService<ExtractionWorker>();
 
 builder.Services.AddScoped<IngestService>();

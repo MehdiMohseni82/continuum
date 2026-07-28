@@ -96,3 +96,6 @@ export type NotificationDto = {
   id: string; kind: "message" | "handoff"; title: string; detail: string;
   timestamp: string; severity: "info" | "warning";
 };
+
+export type RagSource = { kind: "memory" | "event"; sessionId: string | null; sessionTitle: string | null; snippet: string };
+export type AskResponse = { answer: string; sources: RagSource[] };

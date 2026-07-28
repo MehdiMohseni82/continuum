@@ -38,6 +38,10 @@ public static class ApiEndpoints
         api.MapGet("/search", async (string q, HistoryService history, CancellationToken ct, int take = 50) =>
             Results.Ok(await history.SearchAsync(q, Math.Clamp(take, 1, 200), ct)));
 
+        // Ask my history — RAG over memories + transcripts (Feature 2).
+        api.MapPost("/ask", async (AskRequest req, RagService rag, CancellationToken ct) =>
+            Results.Ok(await rag.AskAsync(req.Question, ct)));
+
         // --- cross-machine resume (Phase 1) ---
         api.MapGet("/sessions/{id:guid}/export.jsonl", async (Guid id, ResumeService resume, CancellationToken ct) =>
         {

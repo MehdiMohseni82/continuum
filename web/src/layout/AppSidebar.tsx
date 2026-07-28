@@ -43,6 +43,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { icon: <GridIcon />, name: "Overview", path: "/" },
   { icon: <ListIcon />, name: "History", path: "/sessions" },
+  { icon: <ChatIcon />, name: "Ask my history", path: "/ask" },
   { icon: <PageIcon />, name: "Search", path: "/search" },
   { icon: <BoxCubeIcon />, name: "Memory", path: "/memory" },
   { icon: <UserCircleIcon />, name: "Agents & Bus", path: "/agents" },
