@@ -4,43 +4,46 @@ using Continuum.Core.Domain;
 namespace Continuum.Core.Generation;
 
 public sealed record ExtractedMemory(MemoryType Type, string Content);
+public sealed record ExtractionResult(string? Summary, IReadOnlyList<ExtractedMemory> Memories);
 
 /// <summary>
-/// Parses the LLM's memory-extraction output into typed candidates. Tolerant: accepts a
-/// {"memories":[…]} object or a bare array, strips ``` fences, and never throws on junk.
+/// Parses the LLM's extraction output — a session summary plus durable memory candidates. Tolerant:
+/// accepts {"summary":…,"memories":[…]}, a bare memories array, or ``` fences, and never throws.
 /// </summary>
 public static class ExtractionParser
 {
     private const int MaxContent = 1000;
+    private const int MaxSummary = 800;
 
-    public static IReadOnlyList<ExtractedMemory> Parse(string? raw, int maxItems = 8)
+    /// <summary>Back-compat: just the memories.</summary>
+    public static IReadOnlyList<ExtractedMemory> Parse(string? raw, int maxItems = 8) =>
+        ParseFull(raw, maxItems).Memories;
+
+    public static ExtractionResult ParseFull(string? raw, int maxItems = 8)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return [];
+        var root = Root(raw);
+        if (root is not { } r) return new ExtractionResult(null, []);
 
-        var text = Unfence(raw).Trim();
-        // Find the outermost JSON value.
-        var start = text.IndexOfAny(['{', '[']);
-        if (start < 0) return [];
-        text = text[start..];
-
-        JsonElement root;
-        try
-        {
-            using var doc = JsonDocument.Parse(text);
-            root = doc.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-
+        string? summary = null;
         JsonElement array;
-        if (root.ValueKind == JsonValueKind.Array)
-            array = root;
-        else if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("memories", out var m) && m.ValueKind == JsonValueKind.Array)
-            array = m;
+
+        if (r.ValueKind == JsonValueKind.Array)
+        {
+            array = r;
+        }
+        else if (r.ValueKind == JsonValueKind.Object)
+        {
+            summary = GetString(r, "summary")?.Trim();
+            if (summary is { Length: > MaxSummary }) summary = summary[..MaxSummary];
+            if (string.IsNullOrWhiteSpace(summary)) summary = null;
+
+            if (!(r.TryGetProperty("memories", out array) && array.ValueKind == JsonValueKind.Array))
+                return new ExtractionResult(summary, []);
+        }
         else
-            return [];
+        {
+            return new ExtractionResult(null, []);
+        }
 
         var result = new List<ExtractedMemory>();
         foreach (var item in array.EnumerateArray())
@@ -52,12 +55,28 @@ public static class ExtractionParser
             if (string.IsNullOrWhiteSpace(content)) continue;
             if (content.Length > MaxContent) content = content[..MaxContent];
 
-            var typeStr = GetString(item, "type");
-            var type = Enum.TryParse<MemoryType>(typeStr, ignoreCase: true, out var t) ? t : MemoryType.Project;
-
+            var type = Enum.TryParse<MemoryType>(GetString(item, "type"), ignoreCase: true, out var t) ? t : MemoryType.Project;
             result.Add(new ExtractedMemory(type, content));
         }
-        return result;
+        return new ExtractionResult(summary, result);
+    }
+
+    private static JsonElement? Root(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var text = Unfence(raw).Trim();
+        var start = text.IndexOfAny(['{', '[']);
+        if (start < 0) return null;
+        text = text[start..];
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return doc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static string Unfence(string s)

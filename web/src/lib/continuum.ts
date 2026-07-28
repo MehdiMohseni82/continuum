@@ -68,6 +68,11 @@ export type SearchHit = {
   snippet: string | null;
 };
 
+export type SessionSearchHit = {
+  id: string; title: string | null; workspace: string; machine: string;
+  summary: string | null; lastEventAt: string; messageCount: number; score: number | null;
+};
+
 export type MemoryType = "User" | "Feedback" | "Project" | "Reference";
 export type MemoryDto = {
   id: string;

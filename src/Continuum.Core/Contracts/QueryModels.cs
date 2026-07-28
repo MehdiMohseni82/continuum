@@ -34,3 +34,13 @@ public sealed record SearchHitDto(
     string Type,
     DateTimeOffset Timestamp,
     string? Snippet);
+
+public sealed record SessionSearchHit(
+    Guid Id,
+    string? Title,
+    string Workspace,
+    string Machine,
+    string? Summary,
+    DateTimeOffset LastEventAt,
+    int MessageCount,
+    double? Score);

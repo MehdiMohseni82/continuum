@@ -18,6 +18,8 @@ public class Session
 
     public string? Title { get; set; }
     public string? Summary { get; set; }
+    /// <summary>Embedding of <see cref="Summary"/> for semantic session search.</summary>
+    public Pgvector.Vector? SummaryEmbedding { get; set; }
     public string? GitBranch { get; set; }
     public string? CcVersion { get; set; }
 

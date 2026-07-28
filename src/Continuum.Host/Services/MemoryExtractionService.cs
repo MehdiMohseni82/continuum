@@ -1,35 +1,40 @@
 using System.Text;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
+using Continuum.Core.Embeddings;
 using Continuum.Core.Generation;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace Continuum.Host.Services;
 
 /// <summary>
-/// "Dreaming": distills durable, reusable facts from a session's transcript into memories using the
-/// local LLM. Content is redacted + deduped on save, so the store fills itself without flooding.
+/// "Dreaming": from each session's transcript, writes a short summary (embedded for semantic session
+/// search) and distills durable, reusable facts into memories — one local-LLM call does both.
+/// Memory content is redacted + deduped on save, so the store fills itself without flooding.
 /// </summary>
 public sealed class MemoryExtractionService(
     ContinuumDbContext db,
     IChatCompleter chat,
     MemoryService memory,
+    IEmbedder embedder,
     ILogger<MemoryExtractionService> log)
 {
     private const int MaxDigestChars = 12_000;
 
     private const string System =
-        "You distill a coding session transcript into a few DURABLE, reusable facts worth remembering " +
-        "long-term across future sessions. Capture: user preferences and working style (User/Feedback), " +
-        "project decisions, architecture, conventions, and gotchas (Project), and useful links or resource " +
-        "pointers (Reference). Ignore ephemeral task chatter, one-off debugging, and anything already obvious " +
-        "from the code. Prefer 0-6 high-signal items; return none if nothing is durable.";
+        "You process a coding session transcript. Do two things: (1) write a 2-3 sentence SUMMARY of what " +
+        "the session was about, key decisions, and the outcome; (2) distill a few DURABLE, reusable facts " +
+        "worth remembering long-term — user preferences/style (User/Feedback), project decisions, architecture, " +
+        "conventions, gotchas (Project), and useful links (Reference). Ignore ephemeral task chatter and anything " +
+        "obvious from the code. Prefer 0-6 high-signal memories; none if nothing is durable.";
 
-    /// <summary>Extract memories for one session. Returns how many new memories were saved.</summary>
+    /// <summary>Extract summary + memories for one session. Returns how many new memories were saved.</summary>
     public async Task<int> ExtractAsync(Guid sessionId, CancellationToken ct)
     {
-        var workspaceId = await db.Sessions.Where(s => s.Id == sessionId)
-            .Select(s => (Guid?)s.WorkspaceId).FirstOrDefaultAsync(ct);
+        var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session is null) return 0;
+        var workspaceId = (Guid?)session.WorkspaceId;
 
         var events = await db.Events
             .Where(e => e.SessionId == sessionId && e.TextExcerpt != null && (e.Role == "user" || e.Role == "assistant"))
@@ -42,13 +47,20 @@ public sealed class MemoryExtractionService(
         var digest = BuildDigest(events.Select(e => (e.Role!, e.TextExcerpt!)));
         var user =
             "Transcript (most recent turns):\n\n" + digest +
-            "\n\nReturn JSON: {\"memories\":[{\"type\":\"User|Feedback|Project|Reference\",\"content\":\"one durable fact\"}]}";
+            "\n\nReturn JSON: {\"summary\":\"2-3 sentences\",\"memories\":[{\"type\":\"User|Feedback|Project|Reference\",\"content\":\"one durable fact\"}]}";
 
         // Let LLM/connection failures propagate so the worker can retry (e.g. model not pulled yet).
         var json = await chat.CompleteAsync(System, user, jsonMode: true, ct);
-        var candidates = ExtractionParser.Parse(json);
+        var parsed = ExtractionParser.ParseFull(json);
+
+        if (!string.IsNullOrWhiteSpace(parsed.Summary))
+        {
+            session.Summary = parsed.Summary;
+            session.SummaryEmbedding = new Vector(await embedder.EmbedAsync(parsed.Summary, ct));
+        }
+
         var saved = 0;
-        foreach (var c in candidates)
+        foreach (var c in parsed.Memories)
         {
             var req = new MemorySaveRequest
             {
@@ -62,6 +74,7 @@ public sealed class MemoryExtractionService(
                 saved++;
         }
 
+        await db.SaveChangesAsync(ct); // persist the summary + embedding (and mark work done)
         if (saved > 0) log.LogInformation("Extracted {N} memories from session {Session}", saved, sessionId);
         return saved;
     }

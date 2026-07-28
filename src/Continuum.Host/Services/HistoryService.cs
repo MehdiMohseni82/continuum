@@ -1,13 +1,33 @@
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
+using Continuum.Core.Embeddings;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
+using Pgvector.EntityFrameworkCore;
 
 namespace Continuum.Host.Services;
 
 /// <summary>Read-side queries shared by the API and the Blazor UI.</summary>
-public sealed class HistoryService(ContinuumDbContext db)
+public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
 {
+    /// <summary>Find sessions by the meaning of their summary (semantic search over SummaryEmbedding).</summary>
+    public async Task<IReadOnlyList<SessionSearchHit>> SemanticSessionsAsync(string query, int take, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return [];
+        var q = new Vector(await embedder.EmbedAsync(query, ct));
+
+        return await db.Sessions
+            .Where(s => s.SummaryEmbedding != null)
+            .Select(s => new { s, dist = s.SummaryEmbedding!.CosineDistance(q) })
+            .OrderBy(x => x.dist)
+            .Take(take)
+            .Select(x => new SessionSearchHit(
+                x.s.Id, x.s.Title, x.s.Workspace!.DisplayName, x.s.Machine!.Name,
+                x.s.Summary, x.s.LastEventAt, x.s.MessageCount, 1 - x.dist))
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<WorkspaceDto>> WorkspacesAsync(CancellationToken ct) =>
         await db.Workspaces
             .OrderBy(w => w.DisplayName)

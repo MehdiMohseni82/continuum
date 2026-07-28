@@ -44,6 +44,8 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.Property(s => s.Title).HasMaxLength(1024);
             e.HasIndex(s => s.LastEventAt);
             e.HasIndex(s => s.Status);
+            e.Property(s => s.SummaryEmbedding).HasColumnType($"vector({EmbeddingConfig.Dimensions})");
+            e.HasIndex(s => s.SummaryEmbedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
             e.HasOne(s => s.Machine).WithMany(m => m.Sessions).HasForeignKey(s => s.MachineId);
             e.HasOne(s => s.Workspace).WithMany(w => w.Sessions).HasForeignKey(s => s.WorkspaceId);
         });
