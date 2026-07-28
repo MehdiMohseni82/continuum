@@ -101,6 +101,28 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder)
             .ToListAsync(ct);
     }
 
+    /// <summary>Toggle pin and/or edit content. Editing re-redacts and re-embeds. Returns null if not found.</summary>
+    public async Task<MemoryDto?> UpdateAsync(Guid id, MemoryUpdateRequest req, CancellationToken ct)
+    {
+        var item = await db.Memories.FirstOrDefaultAsync(m => m.Id == id, ct);
+        if (item is null) return null;
+
+        if (req.Content is { } content && !string.IsNullOrWhiteSpace(content) && content != item.Content)
+        {
+            var redacted = SecretRedactor.Redact(content).Text;
+            item.Content = redacted;
+            item.Embedding = new Vector(await embedder.EmbedAsync(redacted, ct));
+        }
+        if (req.Pinned is { } pinned)
+        {
+            item.Pinned = pinned;
+            if (pinned) item.Salience = Math.Max(item.Salience, 1f); // pinning floors salience at max
+        }
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToDto(item, null);
+    }
+
     public async Task<bool> ForgetAsync(Guid id, CancellationToken ct)
     {
         var deleted = await db.Memories.Where(m => m.Id == id).ExecuteDeleteAsync(ct);

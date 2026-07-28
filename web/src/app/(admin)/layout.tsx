@@ -4,6 +4,7 @@ import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
+import CommandPalette from "@/components/continuum/CommandPalette";
 import { usePathname } from "next/navigation";
 
 export default function AdminLayout({
@@ -44,6 +45,7 @@ export default function AdminLayout({
       {/* Sidebar and Backdrop */}
       <AppSidebar />
       <Backdrop />
+      <CommandPalette />
       {/* Main Content Area */}
       <div
         className={`flex-1 transition-all  duration-300 ease-in-out ${mainContentMargin}`}

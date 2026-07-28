@@ -35,8 +35,10 @@ public static class ApiEndpoints
             return detail is null ? Results.NotFound() : Results.Ok(detail);
         });
 
-        api.MapGet("/search", async (string q, HistoryService history, CancellationToken ct, int take = 50) =>
-            Results.Ok(await history.SearchAsync(q, Math.Clamp(take, 1, 200), ct)));
+        api.MapGet("/search", async (
+            string q, HistoryService history, CancellationToken ct,
+            Guid? workspaceId, string? type, int? sinceDays, int take = 50) =>
+            Results.Ok(await history.SearchAsync(q, Math.Clamp(take, 1, 200), ct, workspaceId, type, sinceDays)));
 
         // Semantic session search (over session summaries).
         api.MapGet("/sessions/semantic", async (string q, HistoryService history, CancellationToken ct, int take = 30) =>
@@ -74,6 +76,12 @@ public static class ApiEndpoints
         api.MapGet("/memory", async (
             MemoryService mem, CancellationToken ct, Guid? workspaceId, MemoryType? type, int take = 50) =>
             Results.Ok(await mem.ListAsync(workspaceId, type, Math.Clamp(take, 1, 200), ct)));
+
+        api.MapPatch("/memory/{id:guid}", async (Guid id, MemoryUpdateRequest req, MemoryService mem, CancellationToken ct) =>
+        {
+            var updated = await mem.UpdateAsync(id, req, ct);
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
 
         api.MapDelete("/memory/{id:guid}", async (Guid id, MemoryService mem, CancellationToken ct) =>
             await mem.ForgetAsync(id, ct) ? Results.NoContent() : Results.NotFound());

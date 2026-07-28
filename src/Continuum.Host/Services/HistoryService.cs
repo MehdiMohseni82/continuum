@@ -74,13 +74,25 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
         return new SessionDetailDto(summary, events);
     }
 
-    public async Task<IReadOnlyList<SearchHitDto>> SearchAsync(string q, int take, CancellationToken ct)
+    public async Task<IReadOnlyList<SearchHitDto>> SearchAsync(
+        string q, int take, CancellationToken ct,
+        Guid? workspaceId = null, string? type = null, int? sinceDays = null)
     {
         if (string.IsNullOrWhiteSpace(q)) return [];
 
         // PlainToTsQuery must be called inside the expression tree, or EF falls back to client-eval.
-        return await db.Events
-            .Where(e => e.SearchVector!.Matches(EF.Functions.PlainToTsQuery("english", q)))
+        var query = db.Events
+            .Where(e => e.SearchVector!.Matches(EF.Functions.PlainToTsQuery("english", q)));
+
+        if (workspaceId is { } wid) query = query.Where(e => e.Session!.WorkspaceId == wid);
+        if (!string.IsNullOrWhiteSpace(type)) query = query.Where(e => e.Type == type);
+        if (sinceDays is { } days)
+        {
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-days);
+            query = query.Where(e => e.Timestamp >= cutoff);
+        }
+
+        return await query
             .OrderByDescending(e => e.Timestamp)
             .Take(take)
             .Select(e => new SearchHitDto(

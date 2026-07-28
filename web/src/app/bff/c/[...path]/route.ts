@@ -24,4 +24,4 @@ async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[]
   });
 }
 
-export { handler as GET, handler as POST, handler as DELETE, handler as PUT };
+export { handler as GET, handler as POST, handler as DELETE, handler as PUT, handler as PATCH };

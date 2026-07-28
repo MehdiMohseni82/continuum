@@ -11,6 +11,13 @@ public sealed record MemorySaveRequest
     public bool Pinned { get; init; }
 }
 
+/// <summary>Partial update for a memory. Null fields are left unchanged.</summary>
+public sealed record MemoryUpdateRequest
+{
+    public string? Content { get; init; }
+    public bool? Pinned { get; init; }
+}
+
 public sealed record MemoryDto(
     Guid Id,
     MemoryType Type,
