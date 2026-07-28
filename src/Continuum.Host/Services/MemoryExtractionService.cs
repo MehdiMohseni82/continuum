@@ -69,8 +69,8 @@ public sealed class MemoryExtractionService(
                 WorkspaceId = workspaceId,
                 SourceSessionId = sessionId,
             };
-            // Skip near-duplicates of what we already know.
-            if (await memory.SaveDistinctAsync(req, duplicateThreshold: 0.12, ct) is not null)
+            // Skip near-duplicates; attribute the memory to the session's owner (worker has no current user).
+            if (await memory.SaveDistinctAsync(req, duplicateThreshold: 0.12, session.OwnerId, ct) is not null)
                 saved++;
         }
 

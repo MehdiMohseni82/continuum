@@ -1,7 +1,9 @@
+using System.Linq.Expressions;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
 using Continuum.Core.Embeddings;
+using Continuum.Host.Auth;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
@@ -9,8 +11,23 @@ using Pgvector.EntityFrameworkCore;
 namespace Continuum.Host.Services;
 
 /// <summary>Read-side queries shared by the API and the Blazor UI.</summary>
-public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
+public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder, ICurrentUser current)
 {
+    // A session is visible to admins, its owner, or anyone if it was shared.
+    private Expression<Func<Session, bool>> VisibleSession()
+    {
+        var admin = current.IsAdmin;
+        var uid = current.UserId;
+        return s => admin || s.OwnerId == uid || s.Shared;
+    }
+
+    private Expression<Func<Event, bool>> VisibleEvent()
+    {
+        var admin = current.IsAdmin;
+        var uid = current.UserId;
+        return e => admin || e.Session!.OwnerId == uid || e.Session.Shared;
+    }
+
     /// <summary>Find sessions by the meaning of their summary (semantic search over SummaryEmbedding).</summary>
     public async Task<IReadOnlyList<SessionSearchHit>> SemanticSessionsAsync(string query, int take, CancellationToken ct)
     {
@@ -18,6 +35,7 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
         var q = new Vector(await embedder.EmbedAsync(query, ct));
 
         return await db.Sessions
+            .Where(VisibleSession())
             .Where(s => s.SummaryEmbedding != null)
             .Select(s => new { s, dist = s.SummaryEmbedding!.CosineDistance(q) })
             .OrderBy(x => x.dist)
@@ -28,16 +46,34 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
             .ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<WorkspaceDto>> WorkspacesAsync(CancellationToken ct) =>
-        await db.Workspaces
+    /// <summary>Owner (or admin) toggles whether a session is shared with all users. Returns false if not permitted.</summary>
+    public async Task<bool> SetSharedAsync(Guid sessionId, bool shared, CancellationToken ct)
+    {
+        var admin = current.IsAdmin;
+        var uid = current.UserId;
+        var updated = await db.Sessions
+            .Where(s => s.Id == sessionId && (admin || s.OwnerId == uid))
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Shared, shared), ct);
+        return updated > 0;
+    }
+
+    public async Task<IReadOnlyList<WorkspaceDto>> WorkspacesAsync(CancellationToken ct)
+    {
+        var admin = current.IsAdmin;
+        var uid = current.UserId;
+        return await db.Workspaces
+            .Select(w => new WorkspaceDto(
+                w.Id, w.ProjectKey, w.DisplayName,
+                w.Sessions.Count(s => admin || s.OwnerId == uid || s.Shared)))
+            .Where(x => x.SessionCount > 0)
             .OrderBy(w => w.DisplayName)
-            .Select(w => new WorkspaceDto(w.Id, w.ProjectKey, w.DisplayName, w.Sessions.Count))
             .ToListAsync(ct);
+    }
 
     public async Task<IReadOnlyList<SessionSummaryDto>> SessionsAsync(
         Guid? workspaceId, string? q, SessionStatus? status, int skip, int take, CancellationToken ct)
     {
-        var query = db.Sessions.AsQueryable();
+        var query = db.Sessions.Where(VisibleSession());
 
         if (workspaceId is { } wid) query = query.Where(s => s.WorkspaceId == wid);
         if (status is { } st) query = query.Where(s => s.Status == st);
@@ -56,6 +92,7 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
     public async Task<SessionDetailDto?> SessionAsync(Guid id, int skip, int take, CancellationToken ct)
     {
         var summary = await db.Sessions
+            .Where(VisibleSession())
             .Where(s => s.Id == id)
             .Select(s => new SessionSummaryDto(
                 s.Id, s.Title, s.Workspace!.DisplayName, s.Machine!.Name,
@@ -82,6 +119,7 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder)
 
         // PlainToTsQuery must be called inside the expression tree, or EF falls back to client-eval.
         var query = db.Events
+            .Where(VisibleEvent())
             .Where(e => e.SearchVector!.Matches(EF.Functions.PlainToTsQuery("english", q)));
 
         if (workspaceId is { } wid) query = query.Where(e => e.Session!.WorkspaceId == wid);

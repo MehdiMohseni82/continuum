@@ -10,18 +10,23 @@ async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[]
   const method = req.method;
   const body = method === "GET" || method === "HEAD" ? undefined : await req.text();
 
-  const res = await fetch(url, {
-    method,
-    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-    body,
-    cache: "no-store",
-  });
+  // Forward the caller's session cookie so mutations act as the logged-in user; the legacy token
+  // stays as a fallback (the backend prefers the cookie when present).
+  const headers: Record<string, string> = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers["Cookie"] = cookie;
+
+  const res = await fetch(url, { method, headers, body, cache: "no-store" });
 
   const text = await res.text();
-  return new Response(text, {
+  const out = new Response(text, {
     status: res.status,
     headers: { "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
   });
+  // Pass through any Set-Cookie (e.g. logout clearing the session).
+  const setCookie = res.headers.get("set-cookie");
+  if (setCookie) out.headers.set("set-cookie", setCookie);
+  return out;
 }
 
 export { handler as GET, handler as POST, handler as DELETE, handler as PUT, handler as PATCH };

@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
+using Continuum.Host.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace Continuum.Host.Services;
@@ -12,8 +13,26 @@ namespace Continuum.Host.Services;
 /// (input / output / cache-write / cache-read), matched by model family. Uses raw ADO to run the
 /// jsonb aggregation directly (EF's SqlQuery composition mangles GROUP BY).
 /// </summary>
-public sealed class TokenAnalyticsService(ContinuumDbContext db)
+public sealed class TokenAnalyticsService(ContinuumDbContext db, ICurrentUser current)
 {
+    // Restrict event rows to the caller's visible sessions. Admins see everything. The owner id is a
+    // Guid formatted as a literal (no injection surface) since these queries take no user-supplied text.
+    private string EventScope()
+    {
+        if (current.IsAdmin) return "";
+        var uid = current.UserId ?? Guid.Empty;
+        return $" AND EXISTS (SELECT 1 FROM \"Sessions\" ss WHERE ss.\"Id\"=e.\"SessionId\" " +
+               $"AND (ss.\"OwnerId\"='{uid}' OR ss.\"Shared\"))";
+    }
+
+    // For the project query which already joins Sessions as s.
+    private string JoinedScope()
+    {
+        if (current.IsAdmin) return "";
+        var uid = current.UserId ?? Guid.Empty;
+        return $" AND (s.\"OwnerId\"='{uid}' OR s.\"Shared\")";
+    }
+
     // Each SUM cast to bigint so ADO reads it as Int64 (SUM(bigint) is numeric in Postgres).
     private const string Sums =
         "SUM(COALESCE((e.\"RawJson\"->'message'->'usage'->>'input_tokens')::bigint,0))::bigint, " +
@@ -27,19 +46,22 @@ public sealed class TokenAnalyticsService(ContinuumDbContext db)
         var conn = db.Database.GetDbConnection();
         if (conn.State != ConnectionState.Open) await conn.OpenAsync(ct);
 
+        var eventScope = EventScope();
+        var joinedScope = JoinedScope();
+
         var byModelRaw = await QueryAsync(conn,
-            $"SELECT e.\"RawJson\"->'message'->>'model', {Sums} FROM \"Events\" e WHERE {HasUsage} GROUP BY 1",
+            $"SELECT e.\"RawJson\"->'message'->>'model', {Sums} FROM \"Events\" e WHERE {HasUsage}{eventScope} GROUP BY 1",
             r => new ModelRow(Str(r, 0), L(r, 1), L(r, 2), L(r, 3), L(r, 4)), ct);
 
         var projectRaw = await QueryAsync(conn,
             $"SELECT w.\"DisplayName\", e.\"RawJson\"->'message'->>'model', {Sums} " +
             "FROM \"Events\" e JOIN \"Sessions\" s ON s.\"Id\"=e.\"SessionId\" JOIN \"Workspaces\" w ON w.\"Id\"=s.\"WorkspaceId\" " +
-            $"WHERE {HasUsage} GROUP BY 1,2",
+            $"WHERE {HasUsage}{joinedScope} GROUP BY 1,2",
             r => new DimRow(Str(r, 0) ?? "(unknown)", Str(r, 1), L(r, 2), L(r, 3), L(r, 4), L(r, 5)), ct);
 
         var dayRaw = await QueryAsync(conn,
             "SELECT to_char(date_trunc('day', e.\"Timestamp\"),'MM-DD'), e.\"RawJson\"->'message'->>'model', " + Sums +
-            $"FROM \"Events\" e WHERE {HasUsage} AND e.\"Timestamp\" >= now() - interval '30 days' GROUP BY 1,2 ORDER BY 1",
+            $"FROM \"Events\" e WHERE {HasUsage} AND e.\"Timestamp\" >= now() - interval '30 days'{eventScope} GROUP BY 1,2 ORDER BY 1",
             r => new DimRow(Str(r, 0) ?? "", Str(r, 1), L(r, 2), L(r, 3), L(r, 4), L(r, 5)), ct);
 
         var byModel = byModelRaw

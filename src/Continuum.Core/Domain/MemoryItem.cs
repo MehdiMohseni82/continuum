@@ -31,6 +31,9 @@ public class MemoryItem
     /// <summary>Never decays or gets pruned while true.</summary>
     public bool Pinned { get; set; }
 
+    /// <summary>When true, visible to all users (opt-in share); otherwise only the owner + admins.</summary>
+    public bool Shared { get; set; }
+
     /// <summary>Provenance: the session this was learned in, if any.</summary>
     public Guid? SourceSessionId { get; set; }
 

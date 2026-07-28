@@ -16,6 +16,7 @@ public sealed record MemoryUpdateRequest
 {
     public string? Content { get; init; }
     public bool? Pinned { get; init; }
+    public bool? Shared { get; init; }
 }
 
 public sealed record MemoryDto(
@@ -24,6 +25,7 @@ public sealed record MemoryDto(
     string Content,
     float Salience,
     bool Pinned,
+    bool Shared,
     Guid? WorkspaceId,
     DateTimeOffset CreatedAt,
     double? Score);

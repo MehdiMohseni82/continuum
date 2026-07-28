@@ -1,25 +1,52 @@
-// Server-side Continuum API client. The bearer token stays on the server — client components
-// go through the /bff/c/* proxy route instead of calling the backend directly.
+// Server-side Continuum API client. Forwards the logged-in user's session cookie so SSR pages act
+// as that user; falls back to the legacy shared token (→ bootstrap admin) when nobody is logged in.
+// Client components go through the /bff/c/* proxy, which forwards the cookie the same way.
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 export const CONTINUUM_BACKEND = process.env.CONTINUUM_BACKEND ?? "http://localhost:5000";
 const TOKEN = process.env.CONTINUUM_TOKEN ?? "";
+export const SESSION_COOKIE = "continuum_session";
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Legacy token is always attached as a fallback; the backend prefers the cookie when present.
+  if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (session) headers.Cookie = `${SESSION_COOKIE}=${session}`;
+  return headers;
+}
 
 export async function capi<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${CONTINUUM_BACKEND}${path}`, {
     ...init,
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers: { ...(await authHeaders()), ...(init?.headers ?? {}) },
     cache: "no-store",
   });
+  // Once the legacy token is disabled and nobody is logged in, the backend rejects — send to login.
+  if (res.status === 401) redirect("/login");
   if (!res.ok) throw new Error(`Continuum ${path} -> ${res.status}`);
   return res.json() as Promise<T>;
 }
 
+export type Me = { id: string; email: string; displayName: string; role: "Member" | "Admin"; isLegacy: boolean; mustChangePassword: boolean };
+
+/// Fetch the current principal without redirecting (null when unauthenticated).
+export async function getMe(): Promise<Me | null> {
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
+  if (session) headers.Cookie = `${SESSION_COOKIE}=${session}`;
+  const res = await fetch(`${CONTINUUM_BACKEND}/api/auth/me`, { headers, cache: "no-store" });
+  return res.ok ? ((await res.json()) as Me) : null;
+}
+
 // ---- types (mirror the backend DTOs; JSON is camelCase) ----
 export type CountByLabel = { label: string; count: number };
+export type Pat = { id: string; name: string; prefix: string; createdAt: string; lastUsedAt: string | null; revokedAt: string | null; expiresAt: string | null };
+export type PatCreated = { id: string; name: string; token: string; prefix: string; createdAt: string; expiresAt: string | null };
+export type AppUser = { id: string; email: string; displayName: string; role: "Member" | "Admin"; disabled: boolean; createdAt: string; lastLoginAt: string | null };
 
 export type Analytics = {
   sessions: number;
@@ -80,6 +107,7 @@ export type MemoryDto = {
   content: string;
   salience: number;
   pinned: boolean;
+  shared: boolean;
   workspaceId: string | null;
   createdAt: string;
   score: number | null;

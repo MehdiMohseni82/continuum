@@ -16,6 +16,12 @@ public class Session
     public Guid WorkspaceId { get; set; }
     public Workspace? Workspace { get; set; }
 
+    /// <summary>The user this session belongs to. Defaults to the stand-in owner (the bootstrap admin).</summary>
+    public Guid OwnerId { get; set; } = Defaults.DefaultOwnerId;
+
+    /// <summary>When true, visible to all users (opt-in share); otherwise only the owner + admins.</summary>
+    public bool Shared { get; set; }
+
     public string? Title { get; set; }
     public string? Summary { get; set; }
     /// <summary>Embedding of <see cref="Summary"/> for semantic session search.</summary>

@@ -15,6 +15,8 @@ const NAV: Dest[] = [
   { label: "Agents & Bus", hint: "inter-agent", path: "/agents" },
   { label: "Usage & cost", hint: "tokens", path: "/usage" },
   { label: "Redaction", hint: "secret scan", path: "/redaction" },
+  { label: "Settings & tokens", hint: "account", path: "/settings" },
+  { label: "Manage users", hint: "admin", path: "/users" },
 ];
 
 export default function CommandPalette() {

@@ -1,5 +1,6 @@
 using Continuum.Core.Data;
 using Continuum.Host.Api;
+using Continuum.Host.Auth;
 using Continuum.Host.Components;
 using Continuum.Host.Services;
 using Continuum.Core.Embeddings;
@@ -71,6 +72,16 @@ builder.Configuration.GetSection("Backups").Bind(backupOptions);
 builder.Services.AddSingleton(backupOptions);
 builder.Services.AddSingleton<BackupService>();
 
+// Auth + accounts (Phase 7). Legacy shared token stays valid until AllowLegacyToken is turned off.
+var authOptions = new AuthOptions();
+builder.Configuration.GetSection("Auth").Bind(authOptions);
+builder.Services.AddSingleton(authOptions);
+builder.Services.AddSingleton<Continuum.Host.Auth.TokenSigner>();
+builder.Services.AddScoped<Continuum.Host.Auth.CurrentUserAccessor>();
+builder.Services.AddScoped<Continuum.Host.Auth.ICurrentUser>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
+builder.Services.AddScoped<Continuum.Host.Auth.AuthFilter>();
+builder.Services.AddScoped<AuthService>();
+
 // Accept + emit enums as strings (e.g. "Project") in the JSON API.
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
@@ -85,6 +96,34 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ContinuumDbContext>();
     db.Database.Migrate();
+
+    // Bootstrap the admin account (id = DefaultOwnerId, so it owns all pre-accounts data).
+    // Idempotent: only creates it when no user with that id exists yet.
+    var auth = scope.ServiceProvider.GetRequiredService<AuthService>();
+    if (await auth.FindByIdAsync(Continuum.Core.Domain.Defaults.DefaultOwnerId, default) is null)
+    {
+        var email = builder.Configuration["Auth:AdminEmail"];
+        var password = builder.Configuration["Auth:AdminPassword"];
+        if (!string.IsNullOrWhiteSpace(email) && !string.IsNullOrWhiteSpace(password))
+        {
+            var admin = new Continuum.Core.Domain.User
+            {
+                Id = Continuum.Core.Domain.Defaults.DefaultOwnerId,
+                Email = email.Trim().ToLowerInvariant(),
+                DisplayName = builder.Configuration["Auth:AdminName"] ?? "Admin",
+                PasswordHash = Continuum.Host.Auth.PasswordHasher.Hash(password),
+                Role = Continuum.Core.Domain.UserRole.Admin,
+                CreatedAt = DateTimeOffset.UtcNow,
+            };
+            db.Users.Add(admin);
+            await db.SaveChangesAsync();
+            app.Logger.LogInformation("Bootstrapped admin account {Email}.", admin.Email);
+        }
+        else
+        {
+            app.Logger.LogWarning("No admin account and Auth:AdminEmail/AdminPassword not set — set them to enable login.");
+        }
+    }
 }
 
 if (!app.Environment.IsDevelopment())
@@ -97,7 +136,7 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
-app.MapContinuumApi();
+app.MapContinuumApi(authOptions);
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

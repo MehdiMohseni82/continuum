@@ -49,6 +49,7 @@ const navItems: NavItem[] = [
   { icon: <UserCircleIcon />, name: "Agents & Bus", path: "/agents" },
   { icon: <PieChartIcon />, name: "Usage & cost", path: "/usage" },
   { icon: <PlugInIcon />, name: "Redaction", path: "/redaction" },
+  { icon: <UserCircleIcon />, name: "Settings & tokens", path: "/settings" },
 ];
 
 const othersItems: NavItem[] = [];

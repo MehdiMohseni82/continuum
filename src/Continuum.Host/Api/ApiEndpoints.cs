@@ -7,11 +7,17 @@ namespace Continuum.Host.Api;
 
 public static class ApiEndpoints
 {
-    public static IEndpointRouteBuilder MapContinuumApi(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapContinuumApi(this IEndpointRouteBuilder app, AuthOptions authOptions)
     {
+        // Public (unauthenticated) endpoints — login.
+        app.MapPublicAuthApi(authOptions);
+
         var api = app.MapGroup("/api")
-            .AddEndpointFilter<BearerTokenFilter>()
+            .AddEndpointFilter<AuthFilter>()
             .DisableAntiforgery(); // JSON API, not browser forms
+
+        // Authenticated auth + account-management endpoints.
+        api.MapAuthApi(authOptions);
 
         // --- ingest (daemon → server) ---
         api.MapPost("/ingest/batch", async (IngestBatch batch, IngestService ingest, CancellationToken ct) =>
@@ -43,6 +49,10 @@ public static class ApiEndpoints
         // Semantic session search (over session summaries).
         api.MapGet("/sessions/semantic", async (string q, HistoryService history, CancellationToken ct, int take = 30) =>
             Results.Ok(await history.SemanticSessionsAsync(q, Math.Clamp(take, 1, 100), ct)));
+
+        // Opt-in sharing: owner (or admin) makes a session visible to everyone.
+        api.MapPatch("/sessions/{id:guid}/share", async (Guid id, ShareRequest req, HistoryService history, CancellationToken ct) =>
+            await history.SetSharedAsync(id, req.Shared, ct) ? Results.NoContent() : Results.NotFound());
 
         // Ask my history — RAG over memories + transcripts (Feature 2).
         api.MapPost("/ask", async (AskRequest req, RagService rag, CancellationToken ct) =>

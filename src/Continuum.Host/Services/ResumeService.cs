@@ -10,7 +10,7 @@ namespace Continuum.Host.Services;
 /// Cross-machine continuity: reconstructs a session's transcript from stored events so it can be
 /// materialized as a JSONL file on another machine and resumed, and produces a markdown hand-off.
 /// </summary>
-public sealed class ResumeService(ContinuumDbContext db, HistoryService history)
+public sealed class ResumeService(ContinuumDbContext db, HistoryService history, Continuum.Host.Auth.ICurrentUser current)
 {
     /// <summary>
     /// Rebuild the raw JSONL (one stored line per event, in order). Note: lines round-trip through
@@ -18,8 +18,11 @@ public sealed class ResumeService(ContinuumDbContext db, HistoryService history)
     /// </summary>
     public async Task<string?> ExportJsonlAsync(Guid sessionId, CancellationToken ct)
     {
-        var exists = await db.Sessions.AnyAsync(s => s.Id == sessionId, ct);
-        if (!exists) return null;
+        var admin = current.IsAdmin;
+        var uid = current.UserId;
+        var visible = await db.Sessions.AnyAsync(
+            s => s.Id == sessionId && (admin || s.OwnerId == uid || s.Shared), ct);
+        if (!visible) return null;
 
         var lines = await db.Events
             .Where(e => e.SessionId == sessionId)

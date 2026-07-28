@@ -54,6 +54,13 @@ services:
       Generation__Endpoint: "http://ollama:11434"
       Generation__Model: "${GENERATION_MODEL:-qwen2.5:7b-instruct}"
       Backups__Directory: "/backups"
+      # Auth (Phase 7). Legacy token stays valid until you set Auth__AllowLegacyToken=false.
+      Auth__AllowLegacyToken: "${AUTH_ALLOW_LEGACY:-true}"
+      Auth__AdminEmail: "${AUTH_ADMIN_EMAIL:-}"
+      Auth__AdminPassword: "${AUTH_ADMIN_PASSWORD:-}"
+      Auth__AdminName: "${AUTH_ADMIN_NAME:-Admin}"
+      Auth__AuthSecret: "${AUTH_SECRET:-}"
+      Auth__SecureCookie: "${AUTH_SECURE_COOKIE:-true}"
       ASPNETCORE_HTTP_PORTS: "5000"
     ports:
       - "127.0.0.1:5050:5000"

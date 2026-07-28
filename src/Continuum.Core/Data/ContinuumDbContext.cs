@@ -16,6 +16,8 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
     public DbSet<Channel> Channels => Set<Channel>();
     public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
     public DbSet<Handoff> Handoffs => Set<Handoff>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -44,6 +46,8 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.Property(s => s.Title).HasMaxLength(1024);
             e.HasIndex(s => s.LastEventAt);
             e.HasIndex(s => s.Status);
+            e.HasIndex(s => s.OwnerId);
+            e.HasIndex(s => s.Shared);
             e.Property(s => s.SummaryEmbedding).HasColumnType($"vector({EmbeddingConfig.Dimensions})");
             e.HasIndex(s => s.SummaryEmbedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
             e.HasOne(s => s.Machine).WithMany(m => m.Sessions).HasForeignKey(s => s.MachineId);
@@ -117,6 +121,26 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.Property(h => h.Title).HasMaxLength(256);
             e.HasOne(h => h.FromAgent).WithMany().HasForeignKey(h => h.FromAgentId);
             e.HasOne(h => h.ClaimedByAgent).WithMany().HasForeignKey(h => h.ClaimedByAgentId);
+        });
+
+        b.Entity<User>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.HasIndex(u => u.Email).IsUnique();
+            e.Property(u => u.Email).HasMaxLength(320);
+            e.Property(u => u.DisplayName).HasMaxLength(200);
+            e.Property(u => u.PasswordHash).HasMaxLength(512);
+        });
+
+        b.Entity<AccessToken>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.HasIndex(t => t.TokenHash).IsUnique();
+            e.HasIndex(t => t.UserId);
+            e.Property(t => t.Name).HasMaxLength(200);
+            e.Property(t => t.TokenHash).HasMaxLength(128);
+            e.Property(t => t.Prefix).HasMaxLength(32);
+            e.HasOne(t => t.User).WithMany(u => u.Tokens).HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

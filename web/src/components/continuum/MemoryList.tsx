@@ -15,7 +15,7 @@ export default function MemoryList({ items, emptyText }: { items: MemoryDto[]; e
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
-  async function patch(id: string, body: { pinned?: boolean; content?: string }) {
+  async function patch(id: string, body: { pinned?: boolean; content?: string; shared?: boolean }) {
     setBusy(id);
     try {
       const res = await fetch(`/bff/c/memory/${id}`, {
@@ -82,6 +82,14 @@ export default function MemoryList({ items, emptyText }: { items: MemoryDto[]; e
                 title={m.pinned ? "Unpin" : "Pin — keeps salience at max"}
               >
                 {m.pinned ? "📌 Pinned" : "Pin"}
+              </button>
+              <button
+                onClick={() => patch(m.id, { shared: !m.shared })}
+                disabled={busy === m.id}
+                className={`${m.shared ? "text-success-500 opacity-100" : "text-gray-400 hover:text-success-500"} disabled:opacity-40`}
+                title={m.shared ? "Shared with everyone — click to make private" : "Private — click to share with all users"}
+              >
+                {m.shared ? "Shared" : "Share"}
               </button>
               <button
                 onClick={() => startEdit(m)}

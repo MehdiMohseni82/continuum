@@ -10,7 +10,7 @@ namespace Continuum.Host.Services;
 /// (plus global user/feedback memories) and the latest checkpoint, so a new session starts
 /// already knowing what matters. Keeps a tight token budget to avoid noise.
 /// </summary>
-public sealed class HookContextService(ContinuumDbContext db, CheckpointService checkpoints)
+public sealed class HookContextService(ContinuumDbContext db, CheckpointService checkpoints, Continuum.Host.Auth.ICurrentUser current)
 {
     public async Task<string> BuildSessionStartAsync(string? projectKey, int maxMemories, CancellationToken ct)
     {
@@ -21,8 +21,12 @@ public sealed class HookContextService(ContinuumDbContext db, CheckpointService 
                 .Select(w => (Guid?)w.Id)
                 .FirstOrDefaultAsync(ct);
 
-        // Project-scoped + global (user/feedback) memories, most salient first.
+        // Project-scoped + global (user/feedback) memories, most salient first — only the caller's own
+        // (or shared) memories, so a hook never injects another user's facts.
+        var admin = current.IsAdmin;
+        var uid = current.UserId;
         var memories = await db.Memories
+            .Where(m => admin || m.OwnerId == uid || m.Shared)
             .Where(m => m.WorkspaceId == workspaceId
                         || m.WorkspaceId == null
                         || m.Type == MemoryType.User

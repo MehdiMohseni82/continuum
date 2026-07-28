@@ -1,12 +1,13 @@
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
+using Continuum.Host.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace Continuum.Host.Services;
 
 /// <summary>Upserts machine/workspace/session and inserts new events. Idempotent on (SessionId, Uuid).</summary>
-public sealed class IngestService(ContinuumDbContext db)
+public sealed class IngestService(ContinuumDbContext db, ICurrentUser current)
 {
     // Postgres cannot store the NUL character in jsonb (error 22P05) or text columns. Transcripts can
     // contain it via captured terminal/binary output, so it is stripped before storage — both the raw
@@ -55,6 +56,8 @@ public sealed class IngestService(ContinuumDbContext db)
                     Id = group.Key,
                     MachineId = machine.Id,
                     WorkspaceId = workspace.Id,
+                    // Attribute the session to whoever's token ingested it (the legacy token → admin).
+                    OwnerId = current.UserId ?? Defaults.DefaultOwnerId,
                     StartedAt = first,
                     LastEventAt = first,
                 };
