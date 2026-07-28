@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "continuum": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "/abs/path/to/src/Continuum.Mcp"],
+      "env": {
+        "CONTINUUM_BACKEND": "http://localhost:5000",
+        "CONTINUUM_TOKEN": "dev-local-token-change-me"
+      }
+    }
+  }
+}

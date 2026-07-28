@@ -1,0 +1,39 @@
+@page "/redaction"
+@inject RedactionReviewService Review
+
+<PageTitle>Continuum — Redaction review</PageTitle>
+
+<h1>Redaction review</h1>
+<p class="meta">Secrets found in captured transcripts. Memories are redacted automatically; the raw
+archive is not, so review anything sensitive that landed here.</p>
+
+@if (_hits is null)
+{
+    <p class="empty">Scanning…</p>
+}
+else if (_hits.Count == 0)
+{
+    <p class="empty">✓ No secrets detected in the scanned transcripts.</p>
+}
+else
+{
+    <p class="meta">⚠ @_hits.Count event(s) contain likely secrets.</p>
+    <div class="mem-list">
+        @foreach (var h in _hits)
+        {
+            <div class="mem">
+                <div class="mem-head">
+                    @foreach (var l in h.Labels) { <span class="badge interrupted">@l</span> }
+                    <a class="dim" href="/session/@h.SessionId">@(string.IsNullOrWhiteSpace(h.SessionTitle) ? "(untitled)" : h.SessionTitle)</a>
+                </div>
+                <div class="mem-body mono-snippet">@h.Snippet</div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<RedactionHitDto>? _hits;
+
+    protected override async Task OnInitializedAsync() => _hits = await Review.ScanAsync(5000, default);
+}

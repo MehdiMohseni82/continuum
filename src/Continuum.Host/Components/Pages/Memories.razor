@@ -1,0 +1,47 @@
+@page "/memory"
+@inject MemoryService Memory
+
+<PageTitle>Continuum — Memory</PageTitle>
+
+<h1>Memory</h1>
+<p class="meta">The durable facts Claude can recall. Embedder: <code>@Memory.EmbedderName</code></p>
+
+<form method="get" action="/memory" class="filters">
+    <input type="text" name="q" value="@Q" placeholder="Semantic recall — what do I know about…" />
+    <button type="submit">Recall</button>
+</form>
+
+@if (_items.Count == 0)
+{
+    <p class="empty">@(string.IsNullOrWhiteSpace(Q) ? "No memories yet. Claude saves them via the memory_save tool." : $"Nothing recalled for “{Q}”.")</p>
+}
+else
+{
+    <div class="mem-list">
+        @foreach (var m in _items)
+        {
+            <div class="mem">
+                <div class="mem-head">
+                    <span class="badge type-@m.Type.ToString().ToLowerInvariant()">@m.Type</span>
+                    @if (m.Pinned) { <span class="pin">📌 pinned</span> }
+                    <span class="mem-sal">salience @m.Salience.ToString("0.00")</span>
+                    @if (m.Score is { } sc) { <span class="mem-score">match @sc.ToString("0.00")</span> }
+                </div>
+                <div class="mem-body">@m.Content</div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Q { get; set; }
+
+    private IReadOnlyList<MemoryDto> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = string.IsNullOrWhiteSpace(Q)
+            ? await Memory.ListAsync(null, null, 100, default)
+            : await Memory.SearchAsync(Q, null, 20, default);
+    }
+}

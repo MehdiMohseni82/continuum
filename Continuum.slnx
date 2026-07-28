@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Continuum.Core/Continuum.Core.csproj" />
+    <Project Path="src/Continuum.Daemon/Continuum.Daemon.csproj" />
+    <Project Path="src/Continuum.Host/Continuum.Host.csproj" />
+    <Project Path="src/Continuum.Mcp/Continuum.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Continuum.Tests/Continuum.Tests.csproj" />
+  </Folder>
+</Solution>

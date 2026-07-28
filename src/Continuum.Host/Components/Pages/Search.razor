@@ -1,0 +1,50 @@
+@page "/search"
+@inject HistoryService History
+
+<PageTitle>Continuum — Search</PageTitle>
+
+<h1>Search</h1>
+
+<form method="get" action="/search" class="filters">
+    <input type="text" name="q" value="@Q" placeholder="Search everything you've ever done…" autofocus />
+    <button type="submit">Search</button>
+</form>
+
+@if (!string.IsNullOrWhiteSpace(Q))
+{
+    @if (_hits.Count == 0)
+    {
+        <p class="empty">No matches for “@Q”.</p>
+    }
+    else
+    {
+        <p class="meta">@_hits.Count result(s) for “@Q”</p>
+        <div class="hits">
+            @foreach (var h in _hits)
+            {
+                <a class="hit" href="/session/@h.SessionId">
+                    <div class="hit-head">
+                        <span class="hit-title">@(string.IsNullOrWhiteSpace(h.SessionTitle) ? "(untitled)" : h.SessionTitle)</span>
+                        <span class="hit-meta">@h.Workspace · @h.Type · @h.Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(h.Snippet))
+                    {
+                        <p class="hit-snippet">@h.Snippet</p>
+                    }
+                </a>
+            }
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Q { get; set; }
+
+    private IReadOnlyList<SearchHitDto> _hits = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Q))
+            _hits = await History.SearchAsync(Q, 100, default);
+    }
+}

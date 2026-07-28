@@ -1,0 +1,58 @@
+@page "/"
+@inject HistoryService History
+
+<PageTitle>Continuum — History</PageTitle>
+
+<h1>History</h1>
+
+<form method="get" action="/" class="filters">
+    <input type="text" name="q" value="@Q" placeholder="Filter by title…" />
+    <select name="workspaceId">
+        <option value="">All projects</option>
+        @foreach (var w in _workspaces)
+        {
+            <option value="@w.Id" selected="@(w.Id == WorkspaceId)">@w.DisplayName (@w.SessionCount)</option>
+        }
+    </select>
+    <button type="submit">Apply</button>
+</form>
+
+@if (_sessions.Count == 0)
+{
+    <p class="empty">No sessions yet. Start the daemon and they'll appear here.</p>
+}
+else
+{
+    <table class="grid">
+        <thead>
+            <tr><th>Title</th><th>Project</th><th>Machine</th><th>Status</th><th>Last activity</th><th class="num">Events</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _sessions)
+            {
+                <tr>
+                    <td><a href="/session/@s.Id">@(string.IsNullOrWhiteSpace(s.Title) ? "(untitled)" : s.Title)</a></td>
+                    <td>@s.Workspace</td>
+                    <td>@s.Machine</td>
+                    <td><span class="badge @s.Status.ToString().ToLowerInvariant()">@s.Status</span></td>
+                    <td>@s.LastEventAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td class="num">@s.MessageCount</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Q { get; set; }
+    [SupplyParameterFromQuery] public Guid? WorkspaceId { get; set; }
+
+    private IReadOnlyList<WorkspaceDto> _workspaces = [];
+    private IReadOnlyList<SessionSummaryDto> _sessions = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _workspaces = await History.WorkspacesAsync(default);
+        _sessions = await History.SessionsAsync(WorkspaceId, Q, null, 0, 100, default);
+    }
+}

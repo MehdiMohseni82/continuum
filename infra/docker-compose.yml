@@ -1,0 +1,84 @@
+# Continuum — full stack. Run from the infra/ directory:  docker compose up --build
+# Copy .env.example to .env and set CLAUDE_DIR + CONTINUUM_TOKEN first.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: continuum
+      POSTGRES_USER: continuum
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-continuum}
+    volumes:
+      - continuum-db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U continuum -d continuum"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Self-hosted, open-source embeddings. Nothing leaves your network.
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - continuum-ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: pull the embedding model into the ollama volume, then exit.
+  ollama-pull:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    entrypoint: ["sh", "-c", "ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
+    restart: "no"
+
+  host:
+    build:
+      context: ..
+      dockerfile: src/Continuum.Host/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: "Host=db;Port=5432;Database=continuum;Username=continuum;Password=${POSTGRES_PASSWORD:-continuum}"
+      Continuum__Token: "${CONTINUUM_TOKEN:-dev-local-token-change-me}"
+      Embeddings__Provider: "ollama"
+      Embeddings__Endpoint: "http://ollama:11434"
+      Embeddings__Model: "${EMBEDDING_MODEL:-nomic-embed-text}"
+      ASPNETCORE_HTTP_PORTS: "5000"
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+  # One daemon per machine. It mounts that machine's ~/.claude read-only.
+  daemon:
+    build:
+      context: ..
+      dockerfile: src/Continuum.Daemon/Dockerfile
+    environment:
+      Daemon__BackendUrl: "http://host:5000"
+      Daemon__Token: "${CONTINUUM_TOKEN:-dev-local-token-change-me}"
+      Daemon__MachineName: "${MACHINE_NAME:-my-machine}"
+      Daemon__ClaudeDir: "/claude"
+      Daemon__CursorDbPath: "/data/continuum-cursors.db"
+    volumes:
+      - "${CLAUDE_DIR:?set CLAUDE_DIR in .env to your absolute ~/.claude path}:/claude:ro"
+      - continuum-daemon:/data
+    depends_on:
+      - host
+
+volumes:
+  continuum-db:
+  continuum-daemon:
+  continuum-ollama:

@@ -1,0 +1,68 @@
+@page "/analytics"
+@inject AnalyticsService Svc
+
+<PageTitle>Continuum — Analytics</PageTitle>
+
+<h1>Analytics</h1>
+
+@if (_a is null)
+{
+    <p class="empty">Loading…</p>
+}
+else
+{
+    <div class="tiles">
+        <div class="tile"><span class="tile-n">@_a.Sessions</span><span class="tile-l">Sessions</span></div>
+        <div class="tile"><span class="tile-n">@_a.Events</span><span class="tile-l">Events</span></div>
+        <div class="tile"><span class="tile-n">@_a.Memories</span><span class="tile-l">Memories</span></div>
+        <div class="tile"><span class="tile-n">@_a.Agents</span><span class="tile-l">Agents</span></div>
+        <div class="tile"><span class="tile-n">@_a.Handoffs</span><span class="tile-l">Hand-offs</span></div>
+    </div>
+
+    <section class="chart-card">
+        <h3>Events per day (last 14)</h3>
+        @if (_a.EventsPerDay.Count == 0) { <p class="empty small">No recent events.</p> }
+        else
+        {
+            var max = _a.EventsPerDay.Max(d => d.Count);
+            <div class="bars">
+                @foreach (var d in _a.EventsPerDay)
+                {
+                    <div class="bar-col" title="@d.Label: @d.Count">
+                        <div class="bar" style="height:@(max == 0 ? 0 : (int)(d.Count * 100.0 / max))%"></div>
+                        <span class="bar-x">@d.Label</span>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <div class="bus-grid">
+        <section>@Breakdown("By machine", _a.SessionsByMachine)</section>
+        <section>@Breakdown("By status", _a.SessionsByStatus)</section>
+        <section>@Breakdown("Top projects", _a.TopWorkspaces)</section>
+        <section>@Breakdown("Memories by type", _a.MemoriesByType)</section>
+    </div>
+}
+
+@code {
+    private AnalyticsDto? _a;
+
+    protected override async Task OnInitializedAsync() => _a = await Svc.GetAsync(default);
+
+    private RenderFragment Breakdown(string title, IReadOnlyList<CountByLabel> rows) => builder =>
+    {
+        builder.OpenElement(0, "h3"); builder.AddContent(1, title); builder.CloseElement();
+        if (rows.Count == 0) { builder.OpenElement(2, "p"); builder.AddAttribute(3, "class", "empty small"); builder.AddContent(4, "—"); builder.CloseElement(); return; }
+        builder.OpenElement(5, "ul"); builder.AddAttribute(6, "class", "plain");
+        var i = 7;
+        foreach (var r in rows)
+        {
+            builder.OpenElement(i++, "li");
+            builder.OpenElement(i++, "b"); builder.AddContent(i++, r.Count); builder.CloseElement();
+            builder.AddContent(i++, $" {r.Label}");
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+}

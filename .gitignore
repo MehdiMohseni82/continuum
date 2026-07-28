@@ -1,0 +1,28 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Continuum
+*.db
+*.db-shm
+*.db-wal
+infra/.env
+.env
+.env.local
+**/.env
+**/.env.local
+.continuum-agent
+
+## Node / web
+node_modules/
+.next/
+
+## Plugin caches
+.impeccable/
+
+## OS
+.DS_Store
+Thumbs.db
+.claude/

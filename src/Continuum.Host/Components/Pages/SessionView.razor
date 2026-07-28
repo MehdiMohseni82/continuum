@@ -1,0 +1,57 @@
+@page "/session/{Id:guid}"
+@inject HistoryService History
+
+<PageTitle>Continuum — Session</PageTitle>
+
+@if (_detail is null)
+{
+    <p class="empty">Session not found.</p>
+}
+else
+{
+    var s = _detail.Session;
+    <a class="back" href="/">← History</a>
+    <h1>@(string.IsNullOrWhiteSpace(s.Title) ? "(untitled session)" : s.Title)</h1>
+    <p class="meta">
+        <span class="badge @s.Status.ToString().ToLowerInvariant()">@s.Status</span>
+        @s.Workspace · @s.Machine · @s.MessageCount events ·
+        @s.StartedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm") → @s.LastEventAt.LocalDateTime.ToString("HH:mm")
+    </p>
+
+    <div class="resume-panel">
+        <div class="resume-head">Resume on another machine</div>
+        <p>Download the transcript, drop it into that machine's <code>~/.claude/@ResumeService.ResumeRelativePath(s.Workspace, s.Id)</code>, then run:</p>
+        <pre class="resume-cmd">claude --resume @s.Id</pre>
+        <div class="resume-links">
+            <a class="btn" href="/dl/@s.Id/export.jsonl">⬇ transcript (.jsonl)</a>
+            <a class="btn ghost" href="/dl/@s.Id/bundle.md">⬇ hand-off (.md)</a>
+        </div>
+    </div>
+
+    <div class="transcript">
+        @foreach (var e in _detail.Events)
+        {
+            <div class="evt evt-@e.Type">
+                <div class="evt-head">
+                    <span class="evt-role">@(e.Role ?? e.Type)</span>
+                    <span class="evt-time">@e.Timestamp.LocalDateTime.ToString("HH:mm:ss")</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(e.Text))
+                {
+                    <pre class="evt-body">@e.Text</pre>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private SessionDetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail = await History.SessionAsync(Id, 0, 500, default);
+    }
+}

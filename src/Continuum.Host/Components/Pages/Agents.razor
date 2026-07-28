@@ -1,0 +1,120 @@
+@page "/agents"
+@rendermode InteractiveServer
+@using Continuum.Host.Services
+@implements IDisposable
+@inject BusBroadcaster Bus
+@inject IServiceScopeFactory Scopes
+
+<PageTitle>Continuum — Agents</PageTitle>
+
+<h1>Agents &amp; Bus <span class="live-dot" title="live"></span></h1>
+<p class="meta">Live view of registered agents, bus traffic, and open hand-offs.</p>
+
+<div class="bus-grid">
+    <section>
+        <h3>Agents (@_agents.Count)</h3>
+        @if (_agents.Count == 0) { <p class="empty small">None registered.</p> }
+        else
+        {
+            <ul class="plain">
+                @foreach (var a in _agents)
+                {
+                    <li><b>@a.Name</b> @(a.Capabilities is null ? "" : $"— {a.Capabilities}")
+                        <span class="dim">@a.LastSeenAt.LocalDateTime.ToString("HH:mm:ss")</span></li>
+                }
+            </ul>
+        }
+    </section>
+
+    <section>
+        <h3>Open hand-offs (@_handoffs.Count)</h3>
+        @if (_handoffs.Count == 0) { <p class="empty small">None open.</p> }
+        else
+        {
+            <ul class="plain">
+                @foreach (var h in _handoffs)
+                {
+                    <li><span class="badge @(h.Status == "open" ? "live" : "ended")">@h.Status</span>
+                        <b>@h.Title</b> <span class="dim">from @h.FromAgent</span>
+                        @if (h.ClaimedBy is not null) { <span class="dim">→ @h.ClaimedBy</span> }</li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+<section>
+    <h3>Live bus feed</h3>
+    @if (_feed.Count == 0) { <p class="empty small">Waiting for traffic… messages appear here in real time.</p> }
+    else
+    {
+        <ul class="feed">
+            @foreach (var m in _feed)
+            {
+                <li>
+                    <span class="dim">@m.CreatedAt.LocalDateTime.ToString("HH:mm:ss")</span>
+                    <b>@m.FromAgent</b>
+                    @if (m.Channel is not null) { <span class="to">#@m.Channel</span> }
+                    else if (m.ToAgent is not null) { <span class="to">→ @m.ToAgent</span> }
+                    : @m.Body
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    private readonly List<AgentDto> _agents = [];
+    private readonly List<HandoffDto> _handoffs = [];
+    private readonly LinkedList<MessageDto> _feed = new();
+    private readonly object _lock = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var scope = Scopes.CreateScope();
+        var busSvc = scope.ServiceProvider.GetRequiredService<BusService>();
+        _agents.AddRange(await busSvc.ListAgentsAsync(default));
+        _handoffs.AddRange(await busSvc.ListHandoffsAsync("open", default));
+
+        Bus.AgentRegistered += OnAgent;
+        Bus.MessagePosted += OnMessage;
+        Bus.HandoffChanged += OnHandoff;
+    }
+
+    private void OnAgent(AgentDto a)
+    {
+        lock (_lock)
+        {
+            _agents.RemoveAll(x => x.Id == a.Id);
+            _agents.Insert(0, a);
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnMessage(MessageDto m)
+    {
+        lock (_lock)
+        {
+            _feed.AddFirst(m);
+            while (_feed.Count > 50) _feed.RemoveLast();
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnHandoff(HandoffDto h)
+    {
+        lock (_lock)
+        {
+            _handoffs.RemoveAll(x => x.Id == h.Id);
+            if (h.Status == "open") _handoffs.Insert(0, h);
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Bus.AgentRegistered -= OnAgent;
+        Bus.MessagePosted -= OnMessage;
+        Bus.HandoffChanged -= OnHandoff;
+    }
+}

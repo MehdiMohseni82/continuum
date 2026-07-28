@@ -1,0 +1,79 @@
+# Continuum — SERVER deployment (backend only; the daemon runs on your local machines).
+# Run from infra/:  docker compose -f docker-compose.server.yml up -d --build
+# db and ollama are NOT published to the host; only the app is, on 127.0.0.1:5050 (nginx fronts it).
+name: continuum
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: continuum
+      POSTGRES_USER: continuum
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in infra/.env}
+    volumes:
+      - continuum-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U continuum -d continuum"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    volumes:
+      - continuum-ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  ollama-pull:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    entrypoint: ["sh", "-c", "ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
+    restart: "no"
+
+  host:
+    build:
+      context: ..
+      dockerfile: src/Continuum.Host/Dockerfile
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Postgres: "Host=db;Port=5432;Database=continuum;Username=continuum;Password=${POSTGRES_PASSWORD:?set in infra/.env}"
+      Continuum__Token: "${CONTINUUM_TOKEN:?set in infra/.env}"
+      Embeddings__Provider: "ollama"
+      Embeddings__Endpoint: "http://ollama:11434"
+      Embeddings__Model: "${EMBEDDING_MODEL:-nomic-embed-text}"
+      ASPNETCORE_HTTP_PORTS: "5000"
+    ports:
+      - "127.0.0.1:5050:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+  # Next.js UI. Talks to the API over the internal network; nginx routes /api -> host, / -> web.
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      CONTINUUM_BACKEND: "http://host:5000"
+      CONTINUUM_TOKEN: "${CONTINUUM_TOKEN:?set in infra/.env}"
+    ports:
+      - "127.0.0.1:5060:3000"
+    depends_on:
+      - host
+
+volumes:
+  continuum-db:
+  continuum-ollama:
