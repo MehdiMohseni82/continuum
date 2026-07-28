@@ -82,7 +82,7 @@ export default function AskPage() {
               </div>
             ) : (
               <div className="flex items-center gap-2 text-sm text-gray-400">
-                <span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-brand-400" />
                 thinking over your history…
               </div>
             )}
