@@ -53,13 +53,32 @@ services:
       Embeddings__Model: "${EMBEDDING_MODEL:-nomic-embed-text}"
       Generation__Endpoint: "http://ollama:11434"
       Generation__Model: "${GENERATION_MODEL:-qwen2.5:7b-instruct}"
+      Backups__Directory: "/backups"
       ASPNETCORE_HTTP_PORTS: "5000"
     ports:
       - "127.0.0.1:5050:5000"
+    volumes:
+      - continuum-backups:/backups:ro
     depends_on:
       db:
         condition: service_healthy
       ollama:
+        condition: service_healthy
+
+  # Scheduled DB backups: gzip pg_dump to a named volume, with retention.
+  backup:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: "${POSTGRES_PASSWORD:?set in infra/.env}"
+      BACKUP_INTERVAL_HOURS: "${BACKUP_INTERVAL_HOURS:-24}"
+      BACKUP_KEEP_DAYS: "${BACKUP_KEEP_DAYS:-14}"
+    volumes:
+      - continuum-backups:/backups
+      - ./backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/backup.sh"]
+    depends_on:
+      db:
         condition: service_healthy
 
   # Next.js UI. Talks to the API over the internal network; nginx routes /api -> host, / -> web.
@@ -79,3 +98,4 @@ services:
 volumes:
   continuum-db:
   continuum-ollama:
+  continuum-backups:

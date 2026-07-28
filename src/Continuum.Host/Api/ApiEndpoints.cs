@@ -154,6 +154,19 @@ public static class ApiEndpoints
         api.MapGet("/redaction/scan", async (RedactionReviewService r, CancellationToken ct, int scanLimit = 5000) =>
             Results.Ok(await r.ScanAsync(Math.Clamp(scanLimit, 100, 50000), ct)));
 
+        // --- ops: daily digest + backup status (Phase 6) ---
+        api.MapGet("/digest/latest", async (DigestService d, CancellationToken ct) =>
+        {
+            var latest = await d.LatestAsync(ct);
+            return latest is null ? Results.NoContent() : Results.Ok(latest);
+        });
+
+        // Build + post the digest now (the worker also does this daily).
+        api.MapPost("/digest/run", async (DigestService d, CancellationToken ct) =>
+            Results.Ok(await d.PostDailyAsync(ct)));
+
+        api.MapGet("/backups", (BackupService b, int recent = 10) => Results.Ok(b.Status(recent)));
+
         api.MapPost("/maintenance/decay", async (MemoryMaintenanceService m, CancellationToken ct) =>
             Results.Ok(await m.DecayAsync(ct)));
 

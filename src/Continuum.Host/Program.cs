@@ -62,6 +62,15 @@ builder.Services.AddScoped<TokenAnalyticsService>();
 builder.Services.AddScoped<RedactionReviewService>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 
+// Ops: daily digest + backup reporting (Phase 6).
+builder.Services.Configure<DigestOptions>(builder.Configuration.GetSection("Digest"));
+builder.Services.AddScoped<DigestService>();
+builder.Services.AddHostedService<DigestWorker>();
+var backupOptions = new BackupOptions();
+builder.Configuration.GetSection("Backups").Bind(backupOptions);
+builder.Services.AddSingleton(backupOptions);
+builder.Services.AddSingleton<BackupService>();
+
 // Accept + emit enums as strings (e.g. "Project") in the JSON API.
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));

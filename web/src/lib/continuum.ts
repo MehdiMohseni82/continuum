@@ -105,6 +105,13 @@ export type NotificationDto = {
 export type RagSource = { kind: "memory" | "event"; sessionId: string | null; sessionTitle: string | null; snippet: string };
 export type AskResponse = { answer: string; sources: RagSource[] };
 
+export type BackupFile = { name: string; sizeBytes: number; createdAt: string };
+export type BackupStatus = {
+  configured: boolean; directory: string; count: number; totalBytes: number;
+  latestAt: string | null; recent: BackupFile[];
+};
+export type BusMessage = { id: number; fromAgent: string; toAgent: string | null; channel: string | null; body: string; createdAt: string };
+
 export type ModelUsage = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; costUsd: number };
 export type LabeledCost = { label: string; costUsd: number; tokens: number };
 export type TokenStats = {
