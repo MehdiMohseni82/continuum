@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { capi, getMe, Pat } from "@/lib/continuum";
 import TokenManager from "@/components/continuum/TokenManager";
 import ChangePassword from "@/components/continuum/ChangePassword";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const me = await getMe();
+  if (!me) redirect("/login");
   const tokens = me && !me.isLegacy ? await capi<Pat[]>("/api/auth/tokens") : [];
 
   return (

@@ -6,13 +6,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export const CONTINUUM_BACKEND = process.env.CONTINUUM_BACKEND ?? "http://localhost:5000";
-const TOKEN = process.env.CONTINUUM_TOKEN ?? "";
 export const SESSION_COOKIE = "continuum_session";
 
+// The browser UI authenticates the *person* by their session cookie only — never the legacy shared
+// token. (That token is for machine clients hitting /api directly.) No cookie → the backend 401s and
+// we send them to /login, so the UI is gated even with nginx basic-auth removed.
 async function authHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  // Legacy token is always attached as a fallback; the backend prefers the cookie when present.
-  if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
   const session = (await cookies()).get(SESSION_COOKIE)?.value;
   if (session) headers.Cookie = `${SESSION_COOKIE}=${session}`;
   return headers;
@@ -24,7 +24,6 @@ export async function capi<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { ...(await authHeaders()), ...(init?.headers ?? {}) },
     cache: "no-store",
   });
-  // Once the legacy token is disabled and nobody is logged in, the backend rejects — send to login.
   if (res.status === 401) redirect("/login");
   if (!res.ok) throw new Error(`Continuum ${path} -> ${res.status}`);
   return res.json() as Promise<T>;
@@ -35,10 +34,11 @@ export type Me = { id: string; email: string; displayName: string; role: "Member
 /// Fetch the current principal without redirecting (null when unauthenticated).
 export async function getMe(): Promise<Me | null> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
-  if (session) headers.Cookie = `${SESSION_COOKIE}=${session}`;
-  const res = await fetch(`${CONTINUUM_BACKEND}/api/auth/me`, { headers, cache: "no-store" });
+  if (!session) return null;
+  const res = await fetch(`${CONTINUUM_BACKEND}/api/auth/me`, {
+    headers: { "Content-Type": "application/json", Cookie: `${SESSION_COOKIE}=${session}` },
+    cache: "no-store",
+  });
   return res.ok ? ((await res.json()) as Me) : null;
 }
 

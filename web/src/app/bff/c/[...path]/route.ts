@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 
-// Proxies /bff/c/<path> -> <backend>/api/<path>, injecting the bearer token server-side.
+// Proxies /bff/c/<path> -> <backend>/api/<path>, forwarding the caller's session cookie so client
+// mutations act as the logged-in user. No legacy-token fallback: unauthenticated calls 401.
 const BACKEND = process.env.CONTINUUM_BACKEND ?? "http://localhost:5000";
-const TOKEN = process.env.CONTINUUM_TOKEN ?? "";
 
 async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
@@ -10,9 +10,7 @@ async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[]
   const method = req.method;
   const body = method === "GET" || method === "HEAD" ? undefined : await req.text();
 
-  // Forward the caller's session cookie so mutations act as the logged-in user; the legacy token
-  // stays as a fallback (the backend prefers the cookie when present).
-  const headers: Record<string, string> = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
   const cookie = req.headers.get("cookie");
   if (cookie) headers["Cookie"] = cookie;
 
