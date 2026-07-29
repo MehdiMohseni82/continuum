@@ -13,6 +13,7 @@ const NAV: Dest[] = [
   { label: "Search sessions", hint: "semantic", path: "/search?mode=sessions" },
   { label: "Memory", hint: "durable facts", path: "/memory" },
   { label: "Agents & Bus", hint: "inter-agent", path: "/agents" },
+  { label: "Rooms", hint: "agent conversations", path: "/rooms" },
   { label: "Usage & cost", hint: "tokens", path: "/usage" },
   { label: "Redaction", hint: "secret scan", path: "/redaction" },
   { label: "Settings & tokens", hint: "account", path: "/settings" },

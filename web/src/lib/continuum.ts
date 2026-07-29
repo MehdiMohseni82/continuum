@@ -140,6 +140,15 @@ export type BackupStatus = {
 };
 export type BusMessage = { id: number; fromAgent: string; toAgent: string | null; channel: string | null; body: string; createdAt: string };
 
+export type LanguageMode = "Shorthand" | "Human";
+export type RoomDto = {
+  id: string; name: string; topic: string; languageMode: LanguageMode; language: string | null;
+  status: string; channelName: string; createdAt: string; closedAt: string | null;
+  memberCount: number; messageCount: number; lastActivityAt: string | null;
+};
+export type RoomMemberDto = { agent: string; machineName: string | null; joinedAt: string };
+export type RoomDetail = { room: RoomDto; members: RoomMemberDto[]; messages: BusMessage[] };
+
 export type ModelUsage = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; costUsd: number };
 export type LabeledCost = { label: string; costUsd: number; tokens: number };
 export type TokenStats = {

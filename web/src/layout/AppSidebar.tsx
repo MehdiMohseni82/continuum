@@ -47,6 +47,7 @@ const navItems: NavItem[] = [
   { icon: <PageIcon />, name: "Search", path: "/search" },
   { icon: <BoxCubeIcon />, name: "Memory", path: "/memory" },
   { icon: <UserCircleIcon />, name: "Agents & Bus", path: "/agents" },
+  { icon: <ChatIcon />, name: "Rooms", path: "/rooms" },
   { icon: <PieChartIcon />, name: "Usage & cost", path: "/usage" },
   { icon: <PlugInIcon />, name: "Redaction", path: "/redaction" },
   { icon: <UserCircleIcon />, name: "Settings & tokens", path: "/settings" },

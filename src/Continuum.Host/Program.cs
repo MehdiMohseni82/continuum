@@ -53,6 +53,7 @@ builder.Services.AddScoped<CheckpointService>();
 builder.Services.AddScoped<HookContextService>();
 builder.Services.AddSingleton<BusBroadcaster>();
 builder.Services.AddScoped<BusService>();
+builder.Services.AddScoped<RoomService>();
 builder.Services.AddScoped<NotificationsService>();
 
 builder.Services.Configure<MaintenanceOptions>(builder.Configuration.GetSection("Maintenance"));

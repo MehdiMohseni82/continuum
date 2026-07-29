@@ -150,6 +150,53 @@ public static class ApiEndpoints
         api.MapGet("/handoffs", async (BusService bus, CancellationToken ct, string? status) =>
             Results.Ok(await bus.ListHandoffsAsync(status, ct)));
 
+        // --- rooms: admin-controlled group conversations (Phase 8) ---
+        api.MapPost("/rooms", async (CreateRoomRequest req, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Topic))
+                return Results.BadRequest("Name and topic are required.");
+            return Results.Ok(await rooms.CreateAsync(req, ct));
+        });
+
+        api.MapGet("/rooms", async (RoomService rooms, CancellationToken ct) =>
+            Results.Ok(await rooms.ListAsync(ct)));
+
+        api.MapGet("/rooms/{id:guid}", async (Guid id, RoomService rooms, CancellationToken ct, int take = 200) =>
+        {
+            var detail = await rooms.GetAsync(id, Math.Clamp(take, 1, 1000), ct);
+            return detail is null ? Results.NotFound() : Results.Ok(detail);
+        });
+
+        api.MapGet("/rooms/{id:guid}/messages", async (
+            Guid id, RoomService rooms, CancellationToken ct, long since = 0, int take = 200) =>
+            Results.Ok(await rooms.MessagesAsync(id, since, Math.Clamp(take, 1, 500), ct)));
+
+        api.MapPost("/rooms/{id:guid}/members", async (Guid id, AddMemberRequest req, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            return await rooms.AddMemberAsync(id, req.Agent.Trim(), ct) ? Results.NoContent() : Results.NotFound();
+        });
+
+        api.MapDelete("/rooms/{id:guid}/members/{agent}", async (Guid id, string agent, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            return await rooms.RemoveMemberAsync(id, agent, ct) ? Results.NoContent() : Results.NotFound();
+        });
+
+        api.MapPost("/rooms/{id:guid}/close", async (Guid id, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            return await rooms.CloseAsync(id, ct) ? Results.NoContent() : Results.NotFound();
+        });
+
+        // Agents post here (or via channel_post to the room's channel). Rejected once the room is closed.
+        api.MapPost("/rooms/{id:guid}/post", async (Guid id, RoomPostRequest req, RoomService rooms, CancellationToken ct) =>
+        {
+            var msg = await rooms.PostAsync(id, req.FromAgent.Trim(), req.Body, ct);
+            return msg is null ? Results.Conflict("Room not found or closed.") : Results.Ok(msg);
+        });
+
         // --- header activity feed (bus messages + hand-offs) ---
         api.MapGet("/notifications", async (NotificationsService n, CancellationToken ct, int take = 20) =>
             Results.Ok(await n.RecentAsync(Math.Clamp(take, 1, 100), ct)));

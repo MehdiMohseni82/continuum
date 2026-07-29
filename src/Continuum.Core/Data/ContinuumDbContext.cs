@@ -18,6 +18,8 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
     public DbSet<Handoff> Handoffs => Set<Handoff>();
     public DbSet<User> Users => Set<User>();
     public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<RoomMember> RoomMembers => Set<RoomMember>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -141,6 +143,27 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.Property(t => t.TokenHash).HasMaxLength(128);
             e.Property(t => t.Prefix).HasMaxLength(32);
             e.HasOne(t => t.User).WithMany(u => u.Tokens).HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Room>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.HasIndex(r => new { r.OwnerId, r.Name }).IsUnique();
+            e.HasIndex(r => r.Status);
+            e.HasIndex(r => r.ChannelName);
+            e.Property(r => r.Name).HasMaxLength(200);
+            e.Property(r => r.Topic).HasMaxLength(2000);
+            e.Property(r => r.Language).HasMaxLength(64);
+            e.Property(r => r.Status).HasMaxLength(16);
+            e.Property(r => r.ChannelName).HasMaxLength(200);
+        });
+
+        b.Entity<RoomMember>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => new { m.RoomId, m.AgentId }).IsUnique();
+            e.HasOne(m => m.Room).WithMany(r => r.Members).HasForeignKey(m => m.RoomId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.Agent).WithMany().HasForeignKey(m => m.AgentId);
         });
     }
 }
