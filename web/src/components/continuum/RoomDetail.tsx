@@ -11,10 +11,11 @@ function colorFor(name: string) {
   return PALETTE[h % PALETTE.length];
 }
 
-export default function RoomDetailView({ initial }: { initial: RoomDetail }) {
+export default function RoomDetailView({ initial, meName }: { initial: RoomDetail; meName: string }) {
   const [detail, setDetail] = useState(initial);
   const [agents, setAgents] = useState<AgentDto[]>([]);
   const [addName, setAddName] = useState("");
+  const [say, setSay] = useState("");
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +59,26 @@ export default function RoomDetailView({ initial }: { initial: RoomDetail }) {
       });
       if (res.ok) {
         setAddName("");
+        await refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    const body = say.trim();
+    if (!body) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/bff/c/rooms/${room.id}/post`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromAgent: meName, body }),
+      });
+      if (res.ok) {
+        setSay("");
         await refresh();
       }
     } finally {
@@ -154,6 +175,20 @@ export default function RoomDetailView({ initial }: { initial: RoomDetail }) {
             ))}
             <div ref={bottomRef} />
           </div>
+        )}
+
+        {open && (
+          <form onSubmit={sendMessage} className="mt-4 flex gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <input
+              value={say}
+              onChange={(e) => setSay(e.target.value)}
+              placeholder={`Say something as ${meName}…`}
+              className="h-10 flex-1 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+            />
+            <button disabled={busy || !say.trim()} className="h-10 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+              Send
+            </button>
+          </form>
         )}
       </div>
     </div>

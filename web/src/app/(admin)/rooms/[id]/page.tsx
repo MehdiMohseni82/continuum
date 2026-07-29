@@ -21,5 +21,5 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   }
   if (!detail) return <p className="text-sm text-gray-500 dark:text-gray-400">Room not found.</p>;
 
-  return <RoomDetailView initial={detail} />;
+  return <RoomDetailView initial={detail} meName={me.displayName || me.email} />;
 }
