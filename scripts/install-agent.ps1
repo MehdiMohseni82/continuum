@@ -66,9 +66,10 @@ if (-not $pwsh) { $pwsh = (Get-Command powershell).Source }
 $taskName = "ContinuumDaemon"
 $startup  = [Environment]::GetFolderPath('Startup')
 
-# pwsh -WindowStyle Hidden runs the console daemon windowless AND waits on it, so the task can
-# supervise it (restart on failure). $host.SetShouldExit surfaces a non-zero code if it dies.
-$runCmd = "Set-Location '$daemonDir'; & '$dotnet' '$dll'; exit `$LASTEXITCODE"
+# pwsh -WindowStyle Hidden runs windowless and hosts a watchdog loop that relaunches the daemon
+# whenever it exits — reliable self fail-over that doesn't depend on Task Scheduler's flaky
+# restart-on-failure semantics. Task Scheduler only has to keep this loop alive at logon.
+$runCmd = "Set-Location '$daemonDir'; while (`$true) { try { & '$dotnet' '$dll' } catch {}; Start-Sleep -Seconds 3 }"
 $autoStarted = $false
 try {
   $action   = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -WindowStyle Hidden -Command `"$runCmd`""
