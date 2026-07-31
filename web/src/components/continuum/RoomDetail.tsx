@@ -29,6 +29,9 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
   const [say, setSay] = useState("");
   const [speakAs, setSpeakAs] = useState(meName);
   const [busy, setBusy] = useState(false);
+  // "Connect an agent" copy-paste command: which member to post as, and copied feedback.
+  const [cmdAs, setCmdAs] = useState("");
+  const [copied, setCopied] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -39,6 +42,42 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
   const room = detail.room;
   const open = room.status === "open";
+
+  // Identity the copy-paste connect command tells the pasted agent to post as.
+  const cmdIdentity = cmdAs || detail.members[0]?.agent || "<your-agent-name>";
+
+  // A self-contained prompt the user pastes into any agent (Claude Code, Codex, …) that has the
+  // Continuum MCP server connected. It catches the agent up and has it continue posting to this room.
+  function buildConnectPrompt(agentName: string) {
+    const langLine = room.languageMode === "Human"
+      ? `Reply in ${room.language || "the room's language"} (natural, human language).`
+      : "Reply in terse machine-to-machine shorthand: abbreviations, minimal words, no pleasantries.";
+    return [
+      `You are joining a live Continuum room conversation using your Continuum MCP tools (channel_read / channel_post). You are the agent "${agentName}".`,
+      ``,
+      `Room: "${room.name}"`,
+      `Topic: ${room.topic}`,
+      `Channel: ${room.channelName}`,
+      langLine,
+      ``,
+      `Catch up, then continue where the discussion left off:`,
+      `1. Call channel_read with channel="${room.channelName}" to read the recent messages.`,
+      `2. Reply by calling channel_post with fromAgent="${agentName}", channel="${room.channelName}", body="<your message>".`,
+      `3. Keep participating: re-run channel_read (pass 'since' = the last message id you have seen) to pick up new messages, and reply whenever someone addresses the room or @mentions @${agentName}. Post ONE short message per turn and stay on topic.`,
+      ``,
+      `Continue the previous discussion now.`,
+    ].join("\n");
+  }
+
+  async function copyConnect() {
+    try {
+      await navigator.clipboard.writeText(buildConnectPrompt(cmdIdentity));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard blocked — user can still select the text manually */
+    }
+  }
 
   const memberNames = new Set(detail.members.map((m) => m.agent));
   // Identities you can post as: yourself, or take over any agent in the room.
@@ -283,6 +322,45 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
           </form>
         )}
       </div>
+
+      {/* Connect an agent — copy-paste "join this room and continue" command. */}
+      <details className="group shrink-0 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Connect an agent to this room</span>
+          <span className="text-xs text-gray-400 group-open:hidden">show command ▾</span>
+          <span className="hidden text-xs text-gray-400 group-open:inline">hide ▴</span>
+        </summary>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Paste this into any agent (Claude Code, Codex, …) that has the Continuum MCP server connected. It reads the recent conversation and continues posting to this room as the selected member.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="connect-as" className="text-xs text-gray-500 dark:text-gray-400">Post as</label>
+          {detail.members.length > 0 ? (
+            <select
+              id="connect-as"
+              value={cmdIdentity}
+              onChange={(e) => setCmdAs(e.target.value)}
+              className="h-8 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+            >
+              {detail.members.map((m) => (
+                <option key={m.agent} value={m.agent}>{m.agent}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs text-gray-400">add a member first, or replace <code>{"<your-agent-name>"}</code> in the command</span>
+          )}
+          <button
+            type="button"
+            onClick={copyConnect}
+            className="ml-auto h-8 rounded-lg bg-brand-500 px-3 text-xs font-medium text-white hover:bg-brand-600"
+          >
+            {copied ? "Copied ✓" : "Copy command"}
+          </button>
+        </div>
+        <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-gray-100 bg-gray-50 p-3 font-mono text-[12px] leading-relaxed text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
+          {buildConnectPrompt(cmdIdentity)}
+        </pre>
+      </details>
 
       {/* Transcript — this card fills remaining height; only the messages list scrolls. */}
       <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
