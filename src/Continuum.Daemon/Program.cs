@@ -9,6 +9,7 @@ builder.Services.AddSingleton<CursorStore>();
 builder.Services.AddHttpClient<BackendClient>((sp, http) =>
     BackendClient.Configure(http, sp.GetRequiredService<DaemonOptions>()));
 builder.Services.AddHostedService<TailWorker>();
+builder.Services.AddHostedService<RoomRunnerService>();
 
 var host = builder.Build();
 host.Run();

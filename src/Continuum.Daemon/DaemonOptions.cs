@@ -19,4 +19,45 @@ public sealed class DaemonOptions
 
     /// <summary>Max events per upload; large files are sent in several batches.</summary>
     public int BatchSize { get; set; } = 500;
+
+    /// <summary>Drives local agents through their turns in open rooms (cross-platform successor to room-runner.ps1).</summary>
+    public RoomRunnerOptions RoomRunner { get; set; } = new();
+}
+
+/// <summary>
+/// Configuration for the in-daemon room runner. Local agents are read from <see cref="AgentsFile"/>
+/// when it exists (the historical ~/Continuum/rooms/agents.json), otherwise from <see cref="Agents"/>.
+/// </summary>
+public sealed class RoomRunnerOptions
+{
+    private static string RoomsDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Continuum", "rooms");
+
+    /// <summary>Turn room-driving on/off without stopping history backfill.</summary>
+    public bool Enabled { get; set; } = true;
+
+    public int IntervalSeconds { get; set; } = 35;
+
+    /// <summary>Transcript lines fed to each turn.</summary>
+    public int ContextLines { get; set; } = 12;
+
+    /// <summary>Path to the claude CLI. Empty ⇒ auto-detect from PATH / ~/.local/bin.</summary>
+    public string? ClaudePath { get; set; }
+
+    public string AllowedTools { get; set; } = "mcp__continuum,Read,Grep,Glob";
+
+    /// <summary>JSON list of { name, path } local agents. Wins over <see cref="Agents"/> when present.</summary>
+    public string AgentsFile { get; set; } = Path.Combine(RoomsDir, "agents.json");
+
+    /// <summary>Inline fallback when <see cref="AgentsFile"/> is absent.</summary>
+    public List<LocalAgent> Agents { get; set; } = [];
+
+    /// <summary>Where per-agent turn output is written (one log per agent).</summary>
+    public string LogDir { get; set; } = RoomsDir;
+}
+
+public sealed class LocalAgent
+{
+    public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
 }

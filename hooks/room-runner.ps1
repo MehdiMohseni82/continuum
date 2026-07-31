@@ -1,3 +1,8 @@
+# DEPRECATED: the room runner now lives INSIDE the daemon (src/Continuum.Daemon/RoomRunnerService.cs),
+# which is cross-platform (Windows/macOS/Linux) and self-healing via its supervisor (Task Scheduler /
+# launchd / systemd). Do NOT run this at the same time as an updated daemon — both would wake the same
+# agents and post duplicate turns. Kept only for quick manual testing on Windows.
+#
 # Continuum room runner (Windows / PowerShell).
 # Wakes each configured LOCAL agent to take a turn in the OPEN rooms it belongs to, so agents hold a
 # live conversation. Turn rule: greet if the room is empty and you joined first; otherwise reply when
@@ -58,38 +63,68 @@ do {
             if (-not ($members.agent -contains $name)) { continue }   # not a member of this room
 
             $msgs = @($detail.messages)
+            $memberNames = @($members | ForEach-Object { $_.agent })
+            # Humans = anyone who has spoken but isn't a member agent (the room owner joining in).
+            $humans = @($msgs | ForEach-Object { $_.fromAgent } | Select-Object -Unique |
+                        Where-Object { $memberNames -notcontains $_ })
+
+            $last = if ($msgs.Count -gt 0) { $msgs[-1] } else { $null }
+            # @mentions in the latest message that resolve to a member agent.
+            $mentioned = @()
+            if ($last) {
+                foreach ($mm in [regex]::Matches($last.body, '@([\w.\-]+)')) {
+                    $hit = $memberNames | Where-Object { $_ -ieq $mm.Groups[1].Value } | Select-Object -First 1
+                    if ($hit) { $mentioned += $hit }
+                }
+            }
+
             $isTurn = $false
             $why = ""
             if ($msgs.Count -eq 0) {
                 if ($members[0].agent -eq $name) { $isTurn = $true; $why = "greet (first member)" }
             }
-            elseif ($msgs[-1].fromAgent -ne $name) {
-                $isTurn = $true; $why = "respond to $($msgs[-1].fromAgent)"
+            elseif ($last.fromAgent -ne $name) {
+                if ($mentioned.Count -gt 0) {
+                    # Someone @mentioned specific agents — only they answer.
+                    if ($mentioned -contains $name) { $isTurn = $true; $why = "answer @mention from $($last.fromAgent)" }
+                } else {
+                    $isTurn = $true; $why = "respond to $($last.fromAgent)"
+                }
             }
             if (-not $isTurn) { continue }
+
+            $lastIsHuman = $last -and ($humans -contains $last.fromAgent)
 
             $langLine = if ($r.languageMode -eq 'Human') {
                 "Reply in $($r.language) (natural, human language)."
             } else {
                 "Reply in terse machine-to-machine shorthand: abbreviations, minimal words, no pleasantries."
             }
+            $humanLine = if ($humans.Count -gt 0) {
+                "Human operator(s) in this room (people, NOT agents): $($humans -join ', '). Treat them as the human user running you — when one speaks or @mentions you, answer them directly and concretely, and do what they ask. Their word overrides agent-to-agent chatter."
+            } else { "" }
             $recent = if ($msgs.Count -gt $Context) { $msgs[($msgs.Count - $Context)..($msgs.Count - 1)] } else { $msgs }
-            $transcript = ($recent | ForEach-Object { "$($_.fromAgent): $($_.body)" }) -join "`n"
+            $transcript = ($recent | ForEach-Object {
+                $tag = if ($humans -contains $_.fromAgent) { " (human)" } else { "" }
+                "$($_.fromAgent)$($tag): $($_.body)"
+            }) -join "`n"
             if (-not $transcript) { $transcript = "(no messages yet — you start)" }
             $kick = if ($msgs.Count -eq 0) { "Greet the other member(s) and kick off the conversation on the topic." }
-                    else { "Respond naturally to what was just said, staying on topic." }
+                    elseif ($lastIsHuman) { "The human '$($last.fromAgent)' just addressed the room. Answer them directly and helpfully — do the specific thing they asked." }
+                    else { "Respond naturally to what was just said, staying on topic. If you have nothing genuinely new to add, say so in one short line or ask a pointed question — do not repeat a prior message." }
 
             $prompt = @"
-You are the agent "$name" in a live Continuum room conversation with other AI agents. Post EXACTLY ONE short message, then stop.
+You are the agent "$name" in a live Continuum room conversation with other AI agents and possibly a human. Post EXACTLY ONE short message, then stop.
 
 Room: "$($r.name)"
 Topic: $($r.topic)
 $langLine
+$humanLine
 
-Recent conversation (oldest first):
+Recent conversation (oldest first; "(human)" marks a human, everyone else is an AI agent):
 $transcript
 
-Your task: $kick Keep it short (1-4 sentences, or a few shorthand tokens). Speak as yourself ("$name"); you may briefly mention what you are working on if relevant. Post your message by calling your Continuum channel_post tool with fromAgent="$name", channel="$($r.channelName)", body="<your message>". Post only ONCE, then stop — do not do any other work, do not read or edit files unless needed to answer.
+Your task: $kick Keep it short (1-4 sentences, or a few shorthand tokens). Speak as yourself ("$name"); you may briefly mention what you are working on if relevant. You can @mention another member by name (e.g. @$($memberNames | Where-Object { $_ -ne $name } | Select-Object -First 1)) to direct a question at them. Post your message by calling your Continuum channel_post tool with fromAgent="$name", channel="$($r.channelName)", body="<your message>". Post only ONCE, then stop — do not do any other work, do not read or edit files unless needed to answer.
 "@
 
             if ($DryRun) {
