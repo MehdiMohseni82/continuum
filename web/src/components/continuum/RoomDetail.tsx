@@ -11,16 +11,45 @@ function colorFor(name: string) {
   return PALETTE[h % PALETTE.length];
 }
 
+// Inline markdown we render inside chat bodies: `code`, **bold**, *italic*, [text](url), @mention.
+// Underscores are intentionally left literal so identifiers like table_name / source_id aren't mangled.
+const INLINE_MD = /(`[^`]+`)|(\*\*[^*]+?\*\*)|(\*[^*]+?\*)|(\[[^\]]+\]\([^)\s]+\))|(@[\w.-]+)/g;
+// The @token currently being typed, immediately before the caret.
+function activeMention(text: string, caret: number): { start: number; query: string } | null {
+  const upto = text.slice(0, caret);
+  const m = upto.match(/(?:^|\s)@([\w.-]*)$/);
+  if (!m) return null;
+  return { start: caret - m[1].length - 1, query: m[1] };
+}
+
 export default function RoomDetailView({ initial, meName }: { initial: RoomDetail; meName: string }) {
   const [detail, setDetail] = useState(initial);
   const [agents, setAgents] = useState<AgentDto[]>([]);
   const [addName, setAddName] = useState("");
   const [say, setSay] = useState("");
+  const [speakAs, setSpeakAs] = useState(meName);
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // @mention autocomplete state.
+  const [mentionStart, setMentionStart] = useState(-1);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionIdx, setMentionIdx] = useState(0);
 
   const room = detail.room;
   const open = room.status === "open";
+
+  const memberNames = new Set(detail.members.map((m) => m.agent));
+  // Identities you can post as: yourself, or take over any agent in the room.
+  const speakerOptions = [meName, ...detail.members.map((m) => m.agent).filter((n) => n !== meName)];
+
+  // Who you can @mention: the agents in the room, minus whoever you're currently speaking as.
+  const mentionAll = detail.members.map((m) => m.agent).filter((n) => n !== speakAs);
+  const mentionOpen = mentionStart >= 0;
+  const mentionMatches = mentionOpen
+    ? mentionAll.filter((n) => n.toLowerCase().includes(mentionQuery.toLowerCase()))
+    : [];
 
   const refresh = useCallback(async () => {
     try {
@@ -39,12 +68,113 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
     return () => clearInterval(t);
   }, [refresh, open]);
 
+  // Autoscroll the transcript pane (not the page) to the newest message.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [detail.messages.length]);
 
-  const memberNames = new Set(detail.members.map((m) => m.agent));
   const candidates = agents.map((a) => a.name).filter((n) => !memberNames.has(n));
+
+  function onSayChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setSay(val);
+    const caret = e.target.selectionStart ?? val.length;
+    const mention = activeMention(val, caret);
+    if (mention) {
+      setMentionStart(mention.start);
+      setMentionQuery(mention.query);
+      setMentionIdx(0);
+    } else {
+      setMentionStart(-1);
+    }
+  }
+
+  function applyMention(name: string) {
+    const after = say.slice(mentionStart).replace(/^@[\w.-]*/, "");
+    const before = say.slice(0, mentionStart);
+    const insert = `@${name} `;
+    const next = before + insert + after.replace(/^\s+/, "");
+    setSay(next);
+    setMentionStart(-1);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        const pos = (before + insert).length;
+        el.setSelectionRange(pos, pos);
+      }
+    });
+  }
+
+  function onSayKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!mentionOpen || mentionMatches.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMentionIdx((i) => (i + 1) % mentionMatches.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMentionIdx((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      applyMention(mentionMatches[Math.min(mentionIdx, mentionMatches.length - 1)]);
+    } else if (e.key === "Escape") {
+      setMentionStart(-1);
+    }
+  }
+
+  // Highlight an @mention if it names a room member (or you); otherwise leave it as text.
+  function renderMention(token: string, key: string): React.ReactNode {
+    const name = token.slice(1);
+    if (memberNames.has(name) || name === meName) {
+      return (
+        <span key={key} className="rounded bg-brand-50 px-1 font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+          {token}
+        </span>
+      );
+    }
+    return token;
+  }
+
+  // Render a message body as inline markdown, also highlighting @mentions of room members.
+  // Recursive so emphasis can wrap mentions/code; underscores stay literal (see INLINE_MD).
+  function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+    const out: React.ReactNode[] = [];
+    let last = 0;
+    let i = 0;
+    for (const m of text.matchAll(INLINE_MD)) {
+      const at = m.index ?? 0;
+      const tok = m[0];
+      const key = `${keyPrefix}-${i++}`;
+      if (at > last) out.push(text.slice(last, at));
+      if (m[1]) {
+        out.push(
+          <code key={key} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[12px] text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+            {tok.slice(1, -1)}
+          </code>,
+        );
+      } else if (m[2]) {
+        out.push(<strong key={key} className="font-semibold text-gray-900 dark:text-white">{renderInline(tok.slice(2, -2), key)}</strong>);
+      } else if (m[3]) {
+        out.push(<em key={key}>{renderInline(tok.slice(1, -1), key)}</em>);
+      } else if (m[4]) {
+        const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(tok);
+        out.push(
+          <a key={key} href={link![2]} target="_blank" rel="noreferrer" className="text-brand-500 underline hover:text-brand-600">
+            {renderInline(link![1], key)}
+          </a>,
+        );
+      } else {
+        out.push(renderMention(tok, key));
+      }
+      last = at + tok.length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  }
+
+  function renderBody(body: string) {
+    return renderInline(body, "b");
+  }
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault();
@@ -68,6 +198,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
+    if (mentionOpen) return; // don't submit while picking a mention
     const body = say.trim();
     if (!body) return;
     setBusy(true);
@@ -75,7 +206,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
       const res = await fetch(`/bff/c/rooms/${room.id}/post`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromAgent: meName, body }),
+        body: JSON.stringify({ fromAgent: speakAs, body }),
       });
       if (res.ok) {
         setSay("");
@@ -98,7 +229,8 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-5">
+    // Fill the viewport height so only the transcript scrolls, not the whole page.
+    <div className="flex h-[calc(100vh-9rem)] max-w-3xl flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/rooms" className="text-xs text-gray-400 hover:text-brand-500">← Rooms</Link>
@@ -123,7 +255,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
       </div>
 
       {/* Members */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="shrink-0 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Members</span>
           {detail.members.map((m) => (
@@ -152,40 +284,75 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
         )}
       </div>
 
-      {/* Transcript */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="mb-3 flex items-center gap-2">
+      {/* Transcript — this card fills remaining height; only the messages list scrolls. */}
+      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="mb-3 flex shrink-0 items-center gap-2">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Conversation</span>
           {open && <span className="h-2 w-2 animate-pulse rounded-full bg-success-500" title="live" />}
         </div>
-        {detail.messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-400">
-            No messages yet. {open ? "Add agents and they'll start talking." : "This room is closed."}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {detail.messages.map((m) => (
-              <div key={m.id}>
-                <div className="mb-0.5 flex items-baseline gap-2">
-                  <span className={`text-sm font-semibold ${colorFor(m.fromAgent)}`}>{m.fromAgent}</span>
-                  <span className="text-[11px] text-gray-400">{new Date(m.createdAt).toLocaleTimeString()}</span>
+
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          {detail.messages.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">
+              No messages yet. {open ? "Add agents and they'll start talking." : "This room is closed."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {detail.messages.map((m) => (
+                <div key={m.id}>
+                  <div className="mb-0.5 flex items-baseline gap-2">
+                    <span className={`text-sm font-semibold ${colorFor(m.fromAgent)}`}>{m.fromAgent}</span>
+                    <span className="text-[11px] text-gray-400">{new Date(m.createdAt).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-700 dark:text-gray-200">{renderBody(m.body)}</p>
                 </div>
-                <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-700 dark:text-gray-200">{m.body}</p>
-              </div>
-            ))}
-            <div ref={bottomRef} />
-          </div>
-        )}
+              ))}
+              <div ref={bottomRef} />
+            </div>
+          )}
+        </div>
 
         {open && (
-          <form onSubmit={sendMessage} className="mt-4 flex gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
-            <input
-              value={say}
-              onChange={(e) => setSay(e.target.value)}
-              placeholder={`Say something as ${meName}…`}
-              className="h-10 flex-1 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
-            />
-            <button disabled={busy || !say.trim()} className="h-10 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+          <form onSubmit={sendMessage} className="mt-4 flex shrink-0 gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <select
+              value={speakAs}
+              onChange={(e) => setSpeakAs(e.target.value)}
+              title="Post as yourself, or take over an agent and speak as it"
+              className="h-10 shrink-0 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+            >
+              {speakerOptions.map((n) => (
+                <option key={n} value={n}>{n === meName ? `${n} (you)` : `as ${n}`}</option>
+              ))}
+            </select>
+            <div className="relative flex-1">
+              {/* @mention popup */}
+              {mentionOpen && mentionMatches.length > 0 && (
+                <ul className="absolute bottom-11 left-0 z-10 max-h-48 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                  {mentionMatches.map((n, i) => (
+                    <li key={n}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); applyMention(n); }}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${i === mentionIdx
+                          ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
+                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"}`}
+                      >
+                        <span className={`font-semibold ${colorFor(n)}`}>@{n}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <input
+                ref={inputRef}
+                value={say}
+                onChange={onSayChange}
+                onKeyDown={onSayKeyDown}
+                placeholder={speakAs === meName ? `Message the room as ${meName}… (use @ to mention)` : `Speaking as ${speakAs}… (use @ to mention)`}
+                className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+              />
+            </div>
+            <button disabled={busy || !say.trim()} className="h-10 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
               Send
             </button>
           </form>
