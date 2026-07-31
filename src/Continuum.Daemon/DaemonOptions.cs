@@ -60,4 +60,17 @@ public sealed class LocalAgent
 {
     public string Name { get; set; } = "";
     public string Path { get; set; } = "";
+
+    /// <summary>Which CLI drives this agent's turns: "claude" (default), "codex", or "cursor".</summary>
+    public string Runtime { get; set; } = "claude";
+
+    /// <summary>
+    /// Whether this agent may create/edit files. Default false = it only discusses and posts to the room.
+    /// Hard-enforced for claude (read-only tool set) and codex (--sandbox read-only); prompt-enforced for
+    /// cursor (its print mode has no read-only sandbox flag).
+    /// </summary>
+    public bool Write { get; set; }
+
+    /// <summary>Optional role label injected into the turn prompt, e.g. "consultant" or "implementer".</summary>
+    public string? Role { get; set; }
 }

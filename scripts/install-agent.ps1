@@ -111,6 +111,31 @@ $entry = [pscustomobject]@{ matcher = '*'; hooks = @([pscustomobject]@{ type = '
 $settings.hooks | Add-Member SessionStart @($entry) -Force   # replaces any prior Continuum SessionStart
 $settings | ConvertTo-Json -Depth 12 | Out-File $settingsPath -Encoding utf8
 
+# 5c) wire the Continuum MCP into Codex and Cursor too, so those runtimes can join rooms as agents.
+Write-Host "Wiring Continuum MCP into Codex + Cursor..." -ForegroundColor Cyan
+# Codex: ~/.codex/config.toml — append the section only if it isn't already there.
+$codexCfg = Join-Path $env:USERPROFILE ".codex\config.toml"
+New-Item -ItemType Directory -Force -Path (Split-Path $codexCfg) | Out-Null
+if (-not ((Test-Path $codexCfg) -and (Select-String -Path $codexCfg -Pattern '\[mcp_servers\.continuum\]' -Quiet))) {
+  $tomlArgs = '["' + ($mcpDll -replace '\\', '\\') + '"]'
+  @"
+
+[mcp_servers.continuum]
+command = "dotnet"
+args = $tomlArgs
+env = { CONTINUUM_BACKEND = "$BackendUrl", CONTINUUM_TOKEN = "$Token" }
+"@ | Add-Content -Path $codexCfg -Encoding utf8
+}
+# Cursor: ~/.cursor/mcp.json — merge the server (env must be inline for cursor's headless print mode).
+$cursorCfg = Join-Path $env:USERPROFILE ".cursor\mcp.json"
+New-Item -ItemType Directory -Force -Path (Split-Path $cursorCfg) | Out-Null
+$cursor = if (Test-Path $cursorCfg) { Get-Content $cursorCfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+if (-not $cursor.PSObject.Properties['mcpServers']) { $cursor | Add-Member mcpServers ([pscustomobject]@{}) }
+$cont = [pscustomobject]@{ command = "dotnet"; args = @($mcpDll);
+  env = [pscustomobject]@{ CONTINUUM_BACKEND = $BackendUrl; CONTINUUM_TOKEN = $Token } }
+$cursor.mcpServers | Add-Member continuum $cont -Force
+$cursor | ConvertTo-Json -Depth 12 | Out-File $cursorCfg -Encoding utf8
+
 # 6) start the daemon now
 if ($autoStarted) {
   Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue

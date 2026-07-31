@@ -124,6 +124,44 @@ MCP_DLL="$MCP_DIR/Continuum.Mcp.dll"
 claude mcp remove continuum -s user >/dev/null 2>&1 || true
 claude mcp add continuum --scope user -e CONTINUUM_BACKEND="$BACKEND" -e CONTINUUM_TOKEN="$TOKEN" -- dotnet "$MCP_DLL" >/dev/null
 
+# 5c) wire the Continuum MCP into Codex + Cursor too, so those runtimes can join rooms as agents.
+echo "Wiring Continuum MCP into Codex + Cursor..."
+CODEX_CFG="$HOME/.codex/config.toml"
+mkdir -p "$(dirname "$CODEX_CFG")"
+if ! { [ -f "$CODEX_CFG" ] && grep -q '\[mcp_servers.continuum\]' "$CODEX_CFG"; }; then
+  cat >> "$CODEX_CFG" <<TOML
+
+[mcp_servers.continuum]
+command = "dotnet"
+args = ["$MCP_DLL"]
+env = { CONTINUUM_BACKEND = "$BACKEND", CONTINUUM_TOKEN = "$TOKEN" }
+TOML
+fi
+CURSOR_CFG="$HOME/.cursor/mcp.json"
+mkdir -p "$(dirname "$CURSOR_CFG")"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$CURSOR_CFG" "$MCP_DLL" "$BACKEND" "$TOKEN" <<'PY'
+import json, os, sys
+path, dll, backend, token = sys.argv[1:5]
+cfg = {}
+if os.path.exists(path):
+    try: cfg = json.load(open(path))
+    except Exception: cfg = {}
+cfg.setdefault("mcpServers", {})["continuum"] = {
+    "command": "dotnet", "args": [dll],
+    "env": {"CONTINUUM_BACKEND": backend, "CONTINUUM_TOKEN": token},
+}
+json.dump(cfg, open(path, "w"), indent=2)
+PY
+elif [ ! -f "$CURSOR_CFG" ]; then
+  cat > "$CURSOR_CFG" <<JSON
+{ "mcpServers": { "continuum": { "command": "dotnet", "args": ["$MCP_DLL"],
+  "env": { "CONTINUUM_BACKEND": "$BACKEND", "CONTINUUM_TOKEN": "$TOKEN" } } } }
+JSON
+else
+  echo "  (install python3 or edit $CURSOR_CFG to add the 'continuum' MCP server)"
+fi
+
 # 6) verify
 sleep 4
 if pgrep -f "Continuum.Daemon.dll" >/dev/null; then

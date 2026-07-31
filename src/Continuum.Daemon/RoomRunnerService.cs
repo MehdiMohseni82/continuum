@@ -25,7 +25,8 @@ public sealed partial class RoomRunnerService(
 {
     private readonly RoomRunnerOptions _opt = options.Value.RoomRunner;
     private readonly ConcurrentDictionary<string, Task> _inFlight = new(); // agent name → running turn
-    private string? _claude;
+    private readonly Dictionary<string, string?> _cli = new();             // runtime → resolved CLI path (cached)
+    private readonly HashSet<string> _warnedMissing = new();               // runtimes we've already warned about
 
     [GeneratedRegex(@"@([\w.\-]+)")]
     private static partial Regex MentionRegex();
@@ -38,16 +39,9 @@ public sealed partial class RoomRunnerService(
             return;
         }
 
-        _claude = ResolveClaude(_opt.ClaudePath);
-        if (_claude is null)
-        {
-            log.LogWarning("Room runner: 'claude' CLI not found on PATH or ~/.local/bin — room-driving is off. "
-                         + "Set Daemon:RoomRunner:ClaudePath to enable.");
-            return;
-        }
-
         Directory.CreateDirectory(_opt.LogDir);
-        log.LogInformation("Room runner started (interval {Interval}s, claude '{Claude}').", _opt.IntervalSeconds, _claude);
+        log.LogInformation("Room runner started (interval {Interval}s). Runtimes resolved per agent (claude/codex/cursor).",
+            _opt.IntervalSeconds);
 
         while (!ct.IsCancellationRequested)
         {
@@ -108,9 +102,18 @@ public sealed partial class RoomRunnerService(
                 var decision = DecideTurn(agent.Name, memberNames, detail.Messages);
                 if (!decision.IsTurn) continue;
 
-                var prompt = BuildPrompt(agent.Name, room, memberNames, detail.Messages);
-                log.LogInformation("Waking '{Agent}' in '{Room}' → {Why}", agent.Name, room.Name, decision.Why);
-                _inFlight[agent.Name] = RunTurnAsync(agent, prompt, ct);
+                var cli = ResolveRuntime(agent.Runtime);
+                if (cli is null)
+                {
+                    if (_warnedMissing.Add(agent.Runtime.ToLowerInvariant()))
+                        log.LogWarning("Room runner: '{Runtime}' CLI not found on PATH/~/.local/bin — agents using it are skipped "
+                                     + "until it's installed and logged in.", agent.Runtime);
+                    break; // this agent can't act in any room without its CLI
+                }
+
+                var prompt = BuildPrompt(agent, room, memberNames, detail.Messages);
+                log.LogInformation("Waking '{Agent}' ({Runtime}) in '{Room}' → {Why}", agent.Name, agent.Runtime, room.Name, decision.Why);
+                _inFlight[agent.Name] = RunTurnAsync(agent, cli, prompt, ct);
                 break; // one room per agent per cycle
             }
         }
@@ -145,8 +148,9 @@ public sealed partial class RoomRunnerService(
         return new(true, $"respond to {last.FromAgent}");
     }
 
-    private string BuildPrompt(string name, RoomDto room, List<string> memberNames, IReadOnlyList<MessageDto> msgs)
+    private string BuildPrompt(LocalAgent agent, RoomDto room, List<string> memberNames, IReadOnlyList<MessageDto> msgs)
     {
+        var name = agent.Name;
         // Humans = anyone who has spoken but isn't a member agent (the room owner joining in).
         var humans = msgs.Select(m => m.FromAgent).Distinct()
                          .Where(f => !memberNames.Contains(f)).ToHashSet();
@@ -179,8 +183,13 @@ public sealed partial class RoomRunnerService(
         var other = memberNames.FirstOrDefault(n => n != name);
         var mentionHint = other is null ? "another member by name" : $"another member by name (e.g. @{other})";
 
+        var roleLine = string.IsNullOrWhiteSpace(agent.Role) ? "" : $"Your role in this room: {agent.Role}.";
+        var writeLine = agent.Write
+            ? "You MAY create or edit files to implement what the room has agreed. After changing anything, post a short summary of exactly what you changed (which files, and why)."
+            : "Do NOT create or edit any files — take part by discussing and posting to the room only.";
+
         return $"""
-                You are the agent "{name}" in a live Continuum room conversation with other AI agents and possibly a human. Post EXACTLY ONE short message, then stop.
+                You are the agent "{name}" in a live Continuum room conversation with other AI agents and possibly a human. {roleLine} Post EXACTLY ONE short message to the room, then stop.
 
                 Room: "{room.Name}"
                 Topic: {room.Topic}
@@ -190,30 +199,27 @@ public sealed partial class RoomRunnerService(
                 Recent conversation (oldest first; "(human)" marks a human, everyone else is an AI agent):
                 {transcript}
 
-                Your task: {kick} Keep it short (1-4 sentences, or a few shorthand tokens). Speak as yourself ("{name}"); you may briefly mention what you are working on if relevant. You can @mention {mentionHint} to direct a question at them. Post your message by calling your Continuum channel_post tool with fromAgent="{name}", channel="{room.ChannelName}", body="<your message>". Post only ONCE, then stop — do not do any other work, do not read or edit files unless needed to answer.
+                Your task: {kick} Keep the room message short (1-4 sentences, or a few shorthand tokens). Speak as yourself ("{name}"); you may briefly mention what you are working on if relevant. You can @mention {mentionHint} to direct a question at them. Post your message by calling your Continuum channel_post tool with fromAgent="{name}", channel="{room.ChannelName}", body="<your message>". Post to the room ONCE, then stop. {writeLine}
                 """;
     }
 
     // ---- spawning a turn ----
 
-    private async Task RunTurnAsync(LocalAgent agent, string prompt, CancellationToken ct)
+    private async Task RunTurnAsync(LocalAgent agent, string cli, string prompt, CancellationToken ct)
     {
         var logPath = Path.Combine(_opt.LogDir, $"{agent.Name}.log");
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName = _claude!,
+                FileName = cli,
                 WorkingDirectory = agent.Path,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            psi.ArgumentList.Add("-p");
-            psi.ArgumentList.Add(prompt);
-            psi.ArgumentList.Add("--allowedTools");
-            psi.ArgumentList.Add(_opt.AllowedTools);
+            AddRuntimeArgs(psi, agent, prompt);
 
             using var proc = new Process { StartInfo = psi };
             var sb = new StringBuilder();
@@ -237,7 +243,56 @@ public sealed partial class RoomRunnerService(
         }
     }
 
-    // ---- config / claude resolution ----
+    /// <summary>Headless invocation per runtime. Write-capability is enforced by flags where the runtime allows.</summary>
+    private void AddRuntimeArgs(ProcessStartInfo psi, LocalAgent agent, string prompt)
+    {
+        switch (agent.Runtime.Trim().ToLowerInvariant())
+        {
+            case "codex":
+                // codex exec: non-interactive, no approval prompts. Sandbox controls edit capability (hard).
+                psi.ArgumentList.Add("exec");
+                psi.ArgumentList.Add("--sandbox");
+                psi.ArgumentList.Add(agent.Write ? "workspace-write" : "read-only");
+                psi.ArgumentList.Add(prompt);
+                break;
+
+            case "cursor":
+                // cursor-agent print mode; --force is required for MCP tools to work headlessly.
+                // No read-only sandbox flag exists, so write=false is only prompt-enforced.
+                psi.ArgumentList.Add("--force");
+                psi.ArgumentList.Add("-p");
+                psi.ArgumentList.Add(prompt);
+                break;
+
+            default: // claude
+                psi.ArgumentList.Add("-p");
+                psi.ArgumentList.Add(prompt);
+                psi.ArgumentList.Add("--allowedTools");
+                psi.ArgumentList.Add(agent.Write ? $"{_opt.AllowedTools},Edit,Write,Bash" : _opt.AllowedTools);
+                break;
+        }
+    }
+
+    // ---- config / runtime resolution ----
+
+    /// <summary>Resolve (and cache) the CLI path for a runtime; null if it isn't installed.</summary>
+    private string? ResolveRuntime(string runtime)
+    {
+        var key = string.IsNullOrWhiteSpace(runtime) ? "claude" : runtime.Trim().ToLowerInvariant();
+        if (_cli.TryGetValue(key, out var cached)) return cached;
+
+        var isWin = OperatingSystem.IsWindows();
+        string[] names = key switch
+        {
+            "codex"  => isWin ? ["codex.exe", "codex.cmd", "codex.bat", "codex"] : ["codex"],
+            "cursor" => isWin ? ["cursor-agent.exe", "cursor-agent.cmd", "cursor-agent.bat", "cursor-agent"] : ["cursor-agent"],
+            _        => isWin ? ["claude.exe", "claude.cmd", "claude.bat", "claude"] : ["claude"],
+        };
+        var configured = key == "claude" ? _opt.ClaudePath : null;
+        var resolved = ResolveCli(configured, names);
+        _cli[key] = resolved;
+        return resolved;
+    }
 
     private List<LocalAgent> LoadAgents()
     {
@@ -260,13 +315,10 @@ public sealed partial class RoomRunnerService(
         return [.. _opt.Agents.Where(a => !string.IsNullOrWhiteSpace(a.Name) && !string.IsNullOrWhiteSpace(a.Path))];
     }
 
-    /// <summary>Find the claude CLI cross-platform: explicit config, then PATH, then ~/.local/bin.</summary>
-    private static string? ResolveClaude(string? configured)
+    /// <summary>Find a CLI cross-platform: explicit config, then PATH, then ~/.local/bin.</summary>
+    private static string? ResolveCli(string? configured, string[] names)
     {
         if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return configured;
-
-        var isWindows = OperatingSystem.IsWindows();
-        var names = isWindows ? new[] { "claude.exe", "claude.cmd", "claude.bat", "claude" } : new[] { "claude" };
 
         var pathDirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
