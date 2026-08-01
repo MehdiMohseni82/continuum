@@ -40,6 +40,20 @@ builder.Configuration.GetSection("Generation").Bind(genOptions);
 builder.Services.AddSingleton(genOptions);
 builder.Services.AddHttpClient<IChatCompleter, OllamaChatCompleter>(h => h.Timeout = TimeSpan.FromMinutes(5));
 
+// Server-side room agent (optional; Claude API). Off by default; needs a key (config or ANTHROPIC_API_KEY).
+// This is a separate, external completer — the global IChatCompleter above stays on self-hosted Ollama.
+var serverAgentOptions = new ServerAgentOptions();
+builder.Configuration.GetSection("ServerAgents").Bind(serverAgentOptions);
+builder.Services.AddSingleton(serverAgentOptions);
+if (serverAgentOptions.HasKey())
+{
+    builder.Services.AddSingleton(new AnthropicChatCompleter(
+        serverAgentOptions.ResolveApiKey()!, serverAgentOptions.Model, serverAgentOptions.MaxTokens));
+    builder.Services.AddScoped<ServerAgentDriver>();
+    if (serverAgentOptions.Enabled)
+        builder.Services.AddHostedService<ServerAgentWorker>();
+}
+
 builder.Services.Configure<ExtractionOptions>(builder.Configuration.GetSection("Extraction"));
 builder.Services.AddScoped<MemoryExtractionService>();
 builder.Services.AddScoped<RagService>();

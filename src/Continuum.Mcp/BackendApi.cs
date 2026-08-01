@@ -73,6 +73,25 @@ public sealed class BackendApi
     public async Task<IReadOnlyList<SearchHitDto>> SearchHistoryAsync(string query, int limit, CancellationToken ct) =>
         await _http.GetFromJsonAsync<List<SearchHitDto>>($"/api/search?q={Uri.EscapeDataString(query)}&take={limit}", Json, ct) ?? [];
 
+    // ---- workspaces / projects ----
+
+    public async Task<IReadOnlyList<WorkspaceDto>> ListWorkspacesAsync(CancellationToken ct) =>
+        await _http.GetFromJsonAsync<List<WorkspaceDto>>("/api/workspaces", Json, ct) ?? [];
+
+    /// <summary>Rename the project identified by projectKey. Returns the resolved name, or null if not found.</summary>
+    public async Task<string?> RenameWorkspaceAsync(string projectKey, string displayName, CancellationToken ct)
+    {
+        var all = await ListWorkspacesAsync(ct);
+        var ws = all.FirstOrDefault(w => string.Equals(w.ProjectKey, projectKey, StringComparison.OrdinalIgnoreCase));
+        if (ws is null) return null;
+
+        var resp = await _http.PatchAsJsonAsync($"/api/workspaces/{ws.Id}/display-name",
+            new RenameWorkspaceRequest(displayName), Json, ct);
+        if (!resp.IsSuccessStatusCode) return null;
+        _workspaceCache = null; // name changed; drop the resolve cache
+        return displayName;
+    }
+
     // ---- inter-agent bus ----
 
     public async Task<AgentDto> RegisterAgentAsync(string name, string? machine, string? caps, CancellationToken ct)

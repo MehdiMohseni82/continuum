@@ -6,6 +6,10 @@ public sealed record CreateRoomRequest(string Name, string Topic, LanguageMode L
 public sealed record AddMemberRequest(string Agent);
 public sealed record RoomPostRequest(string FromAgent, string Body);
 
+/// <summary>Ask a server-side (Claude API) agent to take a turn now. Optional steer directs the message;
+/// optional agent picks which server agent speaks (defaults to the first configured one in the room).</summary>
+public sealed record LeadRequest(string? Steer, string? Agent);
+
 public sealed record RoomMemberDto(string Agent, string? MachineName, DateTimeOffset JoinedAt);
 
 public sealed record RoomDto(

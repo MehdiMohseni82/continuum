@@ -4,6 +4,8 @@ namespace Continuum.Core.Contracts;
 
 public sealed record WorkspaceDto(Guid Id, string ProjectKey, string DisplayName, int SessionCount);
 
+public sealed record RenameWorkspaceRequest(string DisplayName);
+
 public sealed record SessionSummaryDto(
     Guid Id,
     string? Title,

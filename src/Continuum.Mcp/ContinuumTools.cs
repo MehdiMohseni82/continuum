@@ -89,6 +89,35 @@ public static class ContinuumTools
         return $"Checkpoint {cp.Id} saved for session {sid}.";
     }
 
+    [McpServerTool(Name = "workspace_list"), Description(
+        "List all projects (workspaces) Continuum tracks, with their projectKey, friendly name, and session count. " +
+        "Use the projectKey with workspace_rename or to scope memory tools.")]
+    public static async Task<string> WorkspaceList(BackendApi api, CancellationToken ct = default)
+    {
+        var items = await api.ListWorkspacesAsync(ct);
+        if (items.Count == 0) return "No projects yet.";
+        var sb = new StringBuilder();
+        foreach (var w in items.OrderByDescending(w => w.SessionCount))
+            sb.Append("- ").Append(w.DisplayName).Append("  (").Append(w.SessionCount).Append(" sessions)  key=")
+              .AppendLine(w.ProjectKey);
+        return sb.ToString();
+    }
+
+    [McpServerTool(Name = "workspace_rename"), Description(
+        "Give a project a friendly display name, shown everywhere its sessions and memories appear. " +
+        "Identify the project by its projectKey (from workspace_list). Applies retroactively to all its history.")]
+    public static async Task<string> WorkspaceRename(
+        BackendApi api,
+        [Description("The project directory key to rename, e.g. D--dotnet-talk-projects-agent-talk.")] string projectKey,
+        [Description("The new friendly name.")] string name,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(projectKey) || string.IsNullOrWhiteSpace(name))
+            return "Both projectKey and name are required.";
+        var renamed = await api.RenameWorkspaceAsync(projectKey.Trim(), name.Trim(), ct);
+        return renamed is null ? $"No project with key '{projectKey}'." : $"Renamed '{projectKey}' → \"{renamed}\".";
+    }
+
     [McpServerTool(Name = "history_search"), Description(
         "Full-text search across every past session on every machine. Use to find when/where something was done.")]
     public static async Task<string> HistorySearch(

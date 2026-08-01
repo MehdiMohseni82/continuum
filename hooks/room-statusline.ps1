@@ -28,7 +28,7 @@ try {
         $d = Invoke-RestMethod -Uri "$B/api/rooms/$($r.id)" -Headers $H -TimeoutSec 3
         if (-not (@($d.members).agent -contains $agent)) { continue }
         $base += "   |   room `"$($r.name)`""
-        $last = @($d.messages) | Select-Object -Last 2
+        $last = @($d.messages) | Select-Object -Last 3
         $lines = foreach ($m in $last) {
             $snip = $m.body -replace '\s+', ' '
             if ($snip.Length -gt 84) { $snip = $snip.Substring(0, 84) + "..." }
