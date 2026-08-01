@@ -29,6 +29,16 @@ public static class ApiEndpoints
         api.MapGet("/workspaces", async (HistoryService history, CancellationToken ct) =>
             Results.Ok(await history.WorkspacesAsync(ct)));
 
+        // Give a project a friendly name (shown everywhere its sessions/memories appear). Admin-only,
+        // since a workspace is shared across users. Applies retroactively to all of its sessions.
+        api.MapPatch("/workspaces/{id:guid}/display-name", async (
+            Guid id, RenameWorkspaceRequest req, ICurrentUser me, HistoryService history, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            if (string.IsNullOrWhiteSpace(req.DisplayName)) return Results.BadRequest("DisplayName is required.");
+            return await history.RenameWorkspaceAsync(id, req.DisplayName, ct) ? Results.NoContent() : Results.NotFound();
+        });
+
         api.MapGet("/sessions", async (
             HistoryService history, CancellationToken ct,
             Guid? workspaceId, string? q, SessionStatus? status, int skip = 0, int take = 50) =>
@@ -195,6 +205,26 @@ public static class ApiEndpoints
         {
             var msg = await rooms.PostAsync(id, req.FromAgent.Trim(), req.Body, ct);
             return msg is null ? Results.Conflict("Room not found or closed.") : Results.Ok(msg);
+        });
+
+        // Have a server-side (Claude API) agent take a turn now — "push/lead" on demand. Optional steer
+        // directs the message. ServerAgentDriver is only registered when a key is configured, so resolve
+        // it lazily and return a clear message when the feature is off.
+        api.MapPost("/rooms/{id:guid}/lead", async (Guid id, LeadRequest? req, ICurrentUser me, ServerAgentOptions opts, IServiceProvider sp, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            if (!opts.HasKey())
+                return Results.BadRequest("Server-side Claude agent is not configured (set ServerAgents:ApiKey or the ANTHROPIC_API_KEY env var).");
+
+            var driver = sp.GetRequiredService<ServerAgentDriver>();
+            var agent = await driver.ResolveLeadAgentAsync(id, req?.Agent?.Trim(), ct);
+            if (agent is null)
+                return Results.BadRequest("No configured server agent is a member of this room — add one first.");
+
+            var msg = await driver.TakeTurnAsync(id, agent, req?.Steer, ct);
+            return msg is null
+                ? Results.Conflict("Room not found/closed, or the agent produced no message.")
+                : Results.Ok(msg);
         });
 
         // --- header activity feed (bus messages + hand-offs) ---

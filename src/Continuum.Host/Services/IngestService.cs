@@ -41,7 +41,7 @@ public sealed class IngestService(ContinuumDbContext db, ICurrentUser current)
                 {
                     Id = Guid.NewGuid(),
                     ProjectKey = projectKey,
-                    DisplayName = projectKey,
+                    DisplayName = WorkspaceNaming.Prettify(projectKey),
                     FirstSeenAt = now,
                 };
                 db.Workspaces.Add(workspace);

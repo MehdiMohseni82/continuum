@@ -53,6 +53,11 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectTab, setConnectTab] = useState<"claude" | "codex">("claude");
   const [cmdAs, setCmdAs] = useState("");
+  // "Post as" can target an existing member, or introduce a brand-new agent (name + role + responsibility).
+  const [newMode, setNewMode] = useState(initial.members.length === 0);
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState("");
+  const [newResp, setNewResp] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +72,9 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
   // Where an agent's Continuum MCP server should point — the public backend is this same origin.
   const backendUrl = typeof window !== "undefined" ? window.location.origin : "https://continuum.dotnet-talk.com";
   // Identity the connect commands tell the pasted agent to post as.
-  const cmdIdentity = cmdAs || detail.members[0]?.agent || "<your-agent-name>";
+  const cmdIdentity = newMode
+    ? (newName.trim() || "<new-agent-name>")
+    : (cmdAs || detail.members[0]?.agent || "<your-agent-name>");
 
   const memberNames = new Set(detail.members.map((m) => m.agent));
   // Identities you can post as: yourself, or take over any agent in the room.
@@ -208,12 +215,17 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
   // --- Connect an agent: the copy-paste artifacts ---
   // A self-contained prompt the user pastes into any agent that has the Continuum MCP server connected.
-  function buildConnectPrompt(agentName: string) {
+  function buildConnectPrompt(agentName: string, role?: string, responsibility?: string) {
     const langLine = room.languageMode === "Human"
       ? `Reply in ${room.language || "the room's language"} (natural, human language).`
       : "Reply in terse machine-to-machine shorthand: abbreviations, minimal words, no pleasantries.";
+    // Optional identity block so a freshly-introduced agent knows who it is and what it owns.
+    const identityLines: string[] = [];
+    if (role?.trim()) identityLines.push(`Your role: ${role.trim()}.`);
+    if (responsibility?.trim()) identityLines.push(`Your responsibility: ${responsibility.trim()}.`);
     return [
       `You are joining a live Continuum room conversation using your Continuum MCP tools (channel_read / channel_post). You are the agent "${agentName}".`,
+      ...(identityLines.length ? [``, ...identityLines] : []),
       ``,
       `Room: "${room.name}"`,
       `Topic: ${room.topic}`,
@@ -256,6 +268,27 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
   const slashInvoke = `/continuum-join ${room.channelName} ${cmdIdentity}`;
   const claudeCmdPath = `~/.claude/commands/continuum-join.md`;
   const codexCmdPath = `~/.codex/prompts/continuum-join.md`;
+
+  // Register a freshly-introduced agent as a room member, then post as it.
+  async function addNewAgent() {
+    const agent = newName.trim();
+    if (!agent) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/bff/c/rooms/${room.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent }),
+      });
+      if (res.ok) {
+        await refresh();
+        setNewMode(false);
+        setCmdAs(agent);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault();
@@ -309,6 +342,30 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
     }
   }
 
+  // Ask the server-side (Claude API) agent to take a turn now, optionally steered.
+  async function leadRoom() {
+    const steer = window.prompt(
+      'Steer the room (optional) — e.g. "summarize and push toward a decision". Leave blank to just advance the conversation.',
+    );
+    if (steer === null) return; // cancelled
+    setBusy(true);
+    try {
+      const res = await fetch(`/bff/c/rooms/${room.id}/lead`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ steer: steer.trim() || null }),
+      });
+      if (res.ok) {
+        await refresh();
+      } else {
+        const text = await res.text().catch(() => "");
+        alert(text || "The server agent could not take a turn.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     // Chat-first: one card fills the viewport; only the transcript scrolls. Meta lives in the drawer + modal.
     <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
@@ -326,6 +383,17 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
         {open && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-success-500" title="live" />}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {open && (
+            <button
+              onClick={leadRoom}
+              disabled={busy}
+              title="Have the server-side Claude agent take a turn now (optionally steer it)"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-brand-300 px-3 text-sm font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z" /></svg>
+              <span className="hidden sm:inline">Lead</span>
+            </button>
+          )}
           <button
             onClick={() => setConnectOpen(true)}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-sm font-medium text-white hover:bg-brand-600"
@@ -512,19 +580,72 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
           </div>
           <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             Post as
-            {detail.members.length > 0 ? (
-              <select
-                value={cmdIdentity}
-                onChange={(e) => setCmdAs(e.target.value)}
-                className="h-8 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
-              >
-                {detail.members.map((m) => <option key={m.agent} value={m.agent}>{m.agent}</option>)}
-              </select>
-            ) : (
-              <span className="text-gray-400">add a member first</span>
-            )}
+            <select
+              value={newMode ? "__new__" : cmdIdentity}
+              onChange={(e) => {
+                if (e.target.value === "__new__") {
+                  setNewMode(true);
+                } else {
+                  setNewMode(false);
+                  setCmdAs(e.target.value);
+                }
+              }}
+              className="h-8 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+            >
+              {detail.members.map((m) => <option key={m.agent} value={m.agent}>{m.agent}</option>)}
+              <option value="__new__">＋ New agent…</option>
+            </select>
           </label>
         </div>
+
+        {/* Introduce a brand-new agent — name + role + responsibility flow into the join prompt below. */}
+        {newMode && (
+          <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.03]">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                Agent name
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Codex-Consult"
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm font-normal text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-transparent dark:text-white/90"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                Role <span className="font-normal text-gray-400">(optional)</span>
+                <input
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  placeholder="e.g. Graph query specialist"
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm font-normal text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-transparent dark:text-white/90"
+                />
+              </label>
+            </div>
+            <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+              Responsibility <span className="font-normal text-gray-400">(optional — what this agent owns in the conversation)</span>
+              <textarea
+                value={newResp}
+                onChange={(e) => setNewResp(e.target.value)}
+                rows={2}
+                placeholder="e.g. Investigate why the Graph path returns fewer records than Studio search, and report findings."
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-transparent dark:text-white/90"
+              />
+            </label>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={addNewAgent}
+                disabled={busy || !newName.trim()}
+                className="h-9 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                Add to room
+              </button>
+              <span className="text-[11px] text-gray-400">
+                Adds <span className="font-medium text-gray-500 dark:text-gray-300">{newName.trim() || "the new agent"}</span> as a member. The role &amp; responsibility below go into its join prompt.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Step 1 — connect the MCP server */}
         <div className="mt-5">
@@ -556,7 +677,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
             <span className="text-sm font-semibold text-gray-800 dark:text-white/90">Join this room</span>
           </div>
           <p className="mb-2 pl-7 text-xs text-gray-500 dark:text-gray-400">Paste this into the agent&apos;s chat — it catches up on the channel and keeps posting as <span className="font-medium">{cmdIdentity}</span>.</p>
-          <div className="pl-7"><CopyBlock code={buildConnectPrompt(cmdIdentity)} /></div>
+          <div className="pl-7"><CopyBlock code={buildConnectPrompt(cmdIdentity, newMode ? newRole : "", newMode ? newResp : "")} /></div>
         </div>
 
         {/* Step 3 — reusable slash command */}
