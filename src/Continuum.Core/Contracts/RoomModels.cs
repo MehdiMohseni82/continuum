@@ -2,7 +2,7 @@ using Continuum.Core.Domain;
 
 namespace Continuum.Core.Contracts;
 
-public sealed record CreateRoomRequest(string Name, string Topic, LanguageMode LanguageMode, string? Language);
+public sealed record CreateRoomRequest(string Name, string Topic, LanguageMode LanguageMode, string? Language, string? SystemPrompt = null);
 public sealed record AddMemberRequest(string Agent);
 public sealed record RoomPostRequest(string FromAgent, string Body);
 
@@ -24,7 +24,8 @@ public sealed record RoomDto(
     DateTimeOffset? ClosedAt,
     int MemberCount,
     int MessageCount,
-    DateTimeOffset? LastActivityAt);
+    DateTimeOffset? LastActivityAt,
+    string? SystemPrompt = null);
 
 public sealed record RoomDetailDto(
     RoomDto Room,
