@@ -145,6 +145,7 @@ export type RoomDto = {
   id: string; name: string; topic: string; languageMode: LanguageMode; language: string | null;
   status: string; channelName: string; createdAt: string; closedAt: string | null;
   memberCount: number; messageCount: number; lastActivityAt: string | null;
+  systemPrompt: string | null;
 };
 export type RoomMemberDto = { agent: string; machineName: string | null; joinedAt: string };
 export type RoomDetail = { room: RoomDto; members: RoomMemberDto[]; messages: BusMessage[] };

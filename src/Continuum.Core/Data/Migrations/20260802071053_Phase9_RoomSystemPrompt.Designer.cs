@@ -3,6 +3,7 @@ using System;
 using Continuum.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace Continuum.Core.Data.Migrations
 {
     [DbContext(typeof(ContinuumDbContext))]
-    partial class ContinuumDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260802071053_Phase9_RoomSystemPrompt")]
+    partial class Phase9_RoomSystemPrompt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

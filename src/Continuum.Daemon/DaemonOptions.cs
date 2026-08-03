@@ -41,6 +41,13 @@ public sealed class RoomRunnerOptions
     /// <summary>Transcript lines fed to each turn.</summary>
     public int ContextLines { get; set; } = 12;
 
+    /// <summary>
+    /// Hard cap on consecutive agent turns with no human speaking. Once a room reaches it the runner
+    /// closes it instead of driving it further — the backstop against agents talking forever. A human
+    /// message resets the count. 0 disables the cap.
+    /// </summary>
+    public int MaxAutonomousTurns { get; set; } = 16;
+
     /// <summary>Path to the claude CLI. Empty ⇒ auto-detect from PATH / ~/.local/bin.</summary>
     public string? ClaudePath { get; set; }
 

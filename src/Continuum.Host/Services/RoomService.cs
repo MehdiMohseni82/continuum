@@ -23,6 +23,7 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
             Topic = req.Topic.Trim(),
             LanguageMode = req.LanguageMode,
             Language = req.LanguageMode == LanguageMode.Human ? (req.Language?.Trim() ?? "English") : null,
+            SystemPrompt = string.IsNullOrWhiteSpace(req.SystemPrompt) ? null : req.SystemPrompt.Trim(),
             Status = "open",
             ChannelName = "room:" + Guid.NewGuid().ToString("N")[..12],
             OwnerId = current.UserId ?? Defaults.DefaultOwnerId,
@@ -223,5 +224,5 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
 
     private static RoomDto ToDto(Room r, int memberCount, int messageCount, DateTimeOffset? lastActivity) =>
         new(r.Id, r.Name, r.Topic, r.LanguageMode, r.Language, r.Status, r.ChannelName,
-            r.CreatedAt, r.ClosedAt, memberCount, messageCount, lastActivity);
+            r.CreatedAt, r.ClosedAt, memberCount, messageCount, lastActivity, r.SystemPrompt);
 }

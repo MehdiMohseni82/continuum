@@ -1,9 +1,9 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
 using Continuum.Core.Generation;
+using Continuum.Core.Rooms;
 using Microsoft.EntityFrameworkCore;
 
 namespace Continuum.Host.Services;
@@ -15,16 +15,15 @@ namespace Continuum.Host.Services;
 /// authenticated user, so it reads room state directly (system-level) and posts via
 /// <see cref="BusService.PostChannelAsync"/> — the same path <see cref="DigestService"/> uses.
 /// </summary>
-public sealed partial class ServerAgentDriver(
+public sealed class ServerAgentDriver(
     ContinuumDbContext db,
     BusService bus,
     AnthropicChatCompleter completer,
     ServerAgentOptions options)
 {
-    [GeneratedRegex(@"@([\w.\-]+)")]
-    private static partial Regex MentionRegex();
-
-    /// <summary>A room's live turn context: enough to decide a turn and build a prompt.</summary>
+    /// <summary>A room's live turn context: enough to decide a turn and build a prompt. <see cref="AgentStreak"/>
+    /// is the consecutive agent-turn count (see <see cref="RoomTurn.TrailingAgentStreak"/>); <see cref="LastMessageId"/>
+    /// identifies the tail message so the worker can avoid re-waking an agent for a state it already handled.</summary>
     public sealed record RoomContext(
         Guid RoomId,
         string Name,
@@ -33,34 +32,9 @@ public sealed partial class ServerAgentDriver(
         string? Language,
         string ChannelName,
         IReadOnlyList<string> MemberNames,
-        IReadOnlyList<(string From, string Body)> Recent);
-
-    public readonly record struct TurnDecision(bool IsTurn, string Why);
-
-    // ---- turn rule (ports RoomRunnerService.DecideTurn) ----
-
-    public static TurnDecision DecideTurn(string name, IReadOnlyList<string> memberNames, IReadOnlyList<(string From, string Body)> recent)
-    {
-        if (recent.Count == 0)
-            return memberNames.Count > 0 && memberNames[0] == name
-                ? new(true, "greet (first member)")
-                : new(false, "");
-
-        var last = recent[^1];
-        if (last.From == name) return new(false, "");
-
-        var mentioned = MentionRegex().Matches(last.Body)
-            .Select(m => m.Groups[1].Value)
-            .Select(v => memberNames.FirstOrDefault(n => string.Equals(n, v, StringComparison.OrdinalIgnoreCase)))
-            .Where(n => n is not null).Select(n => n!).ToList();
-
-        if (mentioned.Count > 0)
-            return mentioned.Contains(name)
-                ? new(true, $"answer @mention from {last.From}")
-                : new(false, "");
-
-        return new(true, $"respond to {last.From}");
-    }
+        IReadOnlyList<(string From, string Body)> Recent,
+        int AgentStreak,
+        long LastMessageId);
 
     // ---- taking a turn ----
 
@@ -76,9 +50,25 @@ public sealed partial class ServerAgentDriver(
 
         var (system, user) = BuildPrompt(ctx, agentName, steer);
         var body = (await completer.CompleteAsync(system, user, jsonMode: false, ct)).Trim();
-        if (string.IsNullOrWhiteSpace(body)) return null;
 
-        return await bus.PostChannelAsync(new ChannelPostRequest(agentName, ctx.ChannelName, body), ct);
+        // Silence sentinel: the agent has nothing new/actionable to add — post nothing this turn.
+        if (string.IsNullOrWhiteSpace(body) || RoomTurn.IsPass(body)) return null;
+
+        var posted = await bus.PostChannelAsync(new ChannelPostRequest(agentName, ctx.ChannelName, body), ct);
+
+        // A [DONE] message is the agent declaring the objective met — the message is posted, then the room ends.
+        if (RoomTurn.IsDone(body)) await CloseRoomAsync(roomId, ct);
+        return posted;
+    }
+
+    /// <summary>Close a room (system context — no admin gate). Idempotent.</summary>
+    public async Task CloseRoomAsync(Guid roomId, CancellationToken ct)
+    {
+        var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == roomId, ct);
+        if (room is null || room.Status == "closed") return;
+        room.Status = "closed";
+        room.ClosedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
@@ -132,19 +122,30 @@ public sealed partial class ServerAgentDriver(
             .Select(c => (Guid?)c.Id).FirstOrDefaultAsync(ct);
 
         List<(string From, string Body)> recent = [];
+        var streak = 0;
+        var lastId = 0L;
         if (chId is { } cid)
         {
+            // Fetch enough history to both feed the prompt (ContextLines) and measure the autonomous-turn
+            // streak, which may run longer than the prompt window.
+            var fetch = Math.Max(Math.Max(1, options.ContextLines), Math.Max(1, options.MaxAutonomousTurns) + 1);
             var rows = await db.AgentMessages
                 .Where(m => m.ChannelId == cid)
-                .OrderByDescending(m => m.Id).Take(Math.Max(1, options.ContextLines))
-                .Select(m => new { From = m.FromAgent!.Name, m.Body })
+                .OrderByDescending(m => m.Id).Take(fetch)
+                .Select(m => new { m.Id, From = m.FromAgent!.Name, m.Body })
                 .ToListAsync(ct);
             rows.Reverse();
-            recent = rows.Select(r => (r.From, r.Body)).ToList();
+
+            var memberSet = members.ToHashSet();
+            streak = RoomTurn.TrailingAgentStreak(rows.Select(r => r.From).ToList(), memberSet);
+            lastId = rows.Count > 0 ? rows[^1].Id : 0L;
+
+            var window = rows.Count > options.ContextLines ? rows.Skip(rows.Count - options.ContextLines) : rows;
+            recent = window.Select(r => (r.From, r.Body)).ToList();
         }
 
         return new RoomContext(room.Id, room.Name, room.Topic, room.LanguageMode, room.Language,
-            room.ChannelName, members, recent);
+            room.ChannelName, members, recent, streak, lastId);
     }
 
     // ---- prompt (adapts RoomRunnerService.BuildPrompt; posts directly, no tool instruction) ----
@@ -163,7 +164,10 @@ public sealed partial class ServerAgentDriver(
             $"You are the agent \"{name}\" in a live Continuum room conversation with other AI agents and possibly a human.{roleLine} " +
             "You take part by posting short chat messages. Your entire reply IS the single message that will be posted to the room verbatim — " +
             "so output only the message body: no name prefix, no surrounding quotes, no preamble, and never call any tools. " +
-            "Keep it to 1–4 sentences (or a few tokens in shorthand). " + langLine;
+            "Keep it to 1–4 sentences (or a few tokens in shorthand). " + langLine + " " +
+            "This is a working conversation with a goal, not open-ended chit-chat: drive toward a concrete conclusion or deliverable, then stop. " +
+            $"If you have nothing genuinely new or actionable to add, reply with exactly \"{RoomTurn.PassToken}\" and nothing else — you will stay silent this turn instead of padding the room. " +
+            $"When the topic is resolved (a decision is reached or the deliverable is ready), post one final message beginning with \"{RoomTurn.DoneMarker}\" that states the outcome; that ends the room.";
 
         // Humans = anyone who has spoken but isn't a member agent (the room owner joining in).
         var members = ctx.MemberNames.ToHashSet();
@@ -190,8 +194,8 @@ public sealed partial class ServerAgentDriver(
         else if (lastIsHuman)
             task = $"The human '{last!.Value.From}' just addressed the room. Answer them directly and helpfully — do the specific thing they asked.";
         else
-            task = "Respond naturally to what was just said, staying on topic. If you have nothing genuinely new to add, " +
-                   "say so in one short line or ask a pointed question — do not repeat a prior message.";
+            task = "Respond to what was just said only if it moves things forward — add a new point, make or challenge a decision, " +
+                   $"or produce the next piece of the deliverable. If you have nothing new/actionable, reply with exactly \"{RoomTurn.PassToken}\". Never repeat a prior message.";
 
         var other = ctx.MemberNames.FirstOrDefault(n => n != name);
         var mentionHint = other is null ? "" : $" You can @mention another member by name (e.g. @{other}) to direct a question at them.";

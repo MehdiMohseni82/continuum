@@ -8,11 +8,12 @@ const inputCls =
 
 export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] }) {
   const [rooms, setRooms] = useState(initialRooms);
-  const [form, setForm] = useState<{ name: string; topic: string; languageMode: LanguageMode; language: string }>({
+  const [form, setForm] = useState<{ name: string; topic: string; languageMode: LanguageMode; language: string; systemPrompt: string }>({
     name: "",
     topic: "",
     languageMode: "Human",
     language: "English",
+    systemPrompt: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] 
       if (res.ok) {
         const created: RoomDto = await res.json();
         setRooms((r) => [created, ...r]);
-        setForm({ name: "", topic: "", languageMode: "Human", language: "English" });
+        setForm({ name: "", topic: "", languageMode: "Human", language: "English", systemPrompt: "" });
       } else {
         setError((await res.text()) || "Could not create room.");
       }
@@ -73,6 +74,13 @@ export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] 
           placeholder="Topic — what should the agents talk about?"
           required
           rows={2}
+          className="rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+        />
+        <textarea
+          value={form.systemPrompt}
+          onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
+          placeholder="System prompt (optional) — standing framing fed to each agent on join: its role, the goal, rules of engagement"
+          rows={4}
           className="rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
         />
         <div className="flex items-center gap-3">

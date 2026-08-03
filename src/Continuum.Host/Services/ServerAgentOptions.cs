@@ -24,6 +24,13 @@ public sealed class ServerAgentOptions
     /// <summary>Transcript lines fed to each turn.</summary>
     public int ContextLines { get; set; } = 12;
 
+    /// <summary>
+    /// Hard cap on consecutive agent turns with no human speaking. Once a room reaches it the room is
+    /// closed instead of driven further — the backstop against two agents talking forever. A human
+    /// message resets the count. 0 disables the cap.
+    /// </summary>
+    public int MaxAutonomousTurns { get; set; } = 16;
+
     /// <summary>The server-side agents this backend drives. Keep names distinct from any daemon agents.</summary>
     public List<ServerAgentDef> Agents { get; set; } = [];
 

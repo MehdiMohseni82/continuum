@@ -24,6 +24,11 @@ public class Room
     /// <summary>What the agents should talk about (frames the conversation).</summary>
     public required string Topic { get; set; }
 
+    /// <summary>Standing system-prompt framing fed to each agent when it joins the room: its role, the
+    /// goal, and the rules of engagement. Authored at room creation and delivered once on join (not
+    /// repeated per message), so the per-turn messages stay raw — exactly like a normal CLI chat.</summary>
+    public string? SystemPrompt { get; set; }
+
     public LanguageMode LanguageMode { get; set; } = LanguageMode.Human;
 
     /// <summary>The human language to speak when <see cref="LanguageMode"/> is Human (e.g. "English", "Farsi"). Null for Shorthand.</summary>
