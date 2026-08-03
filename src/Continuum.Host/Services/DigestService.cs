@@ -62,7 +62,8 @@ public sealed class DigestService(ContinuumDbContext db, BusService bus)
         return await db.AgentMessages
             .Where(m => m.ChannelId == channel.Id)
             .OrderByDescending(m => m.Id)
-            .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, Channel, m.Body, m.CreatedAt))
+            .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, Channel, m.Body, m.CreatedAt,
+                m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheCreationTokens))
             .FirstOrDefaultAsync(ct);
     }
 }

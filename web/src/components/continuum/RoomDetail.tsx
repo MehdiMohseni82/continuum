@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
-import type { RoomDetail, AgentDto } from "@/lib/continuum";
+import type { RoomDetail, AgentDto, BusMessage } from "@/lib/continuum";
 
 // Stable-ish color per agent name so speakers are easy to tell apart.
 const PALETTE = ["text-brand-500", "text-success-600", "text-orange-500", "text-blue-light-500", "text-error-500"];
@@ -10,6 +10,19 @@ function colorFor(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
+}
+
+// Compact token count, e.g. 940, 1.2k, 3.4M.
+function fmtTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return (n / 1000).toFixed(n < 10_000 ? 1 : 0) + "k";
+  return (n / 1_000_000).toFixed(1) + "M";
+}
+// Total tokens the turn behind a message used (input + output + cache), or null if none was recorded.
+function msgTokens(m: BusMessage): number | null {
+  const parts = [m.inputTokens, m.outputTokens, m.cacheReadTokens, m.cacheCreationTokens];
+  if (parts.every((x) => x == null)) return null;
+  return parts.reduce<number>((a, x) => a + (x || 0), 0);
 }
 
 // Inline markdown we render inside chat bodies: `code`, **bold**, *italic*, [text](url), @mention.
@@ -381,6 +394,14 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
           {open ? "open" : "closed"}
         </span>
         {open && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-success-500" title="live" />}
+        {room.totalTokens > 0 && (
+          <span
+            className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            title="Total tokens used by every message in this room"
+          >
+            {fmtTokens(room.totalTokens)} tok
+          </span>
+        )}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {open && (
@@ -427,6 +448,14 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
                   <div className="mb-0.5 flex items-baseline gap-2">
                     <span className={`text-sm font-semibold ${colorFor(m.fromAgent)}`}>{m.fromAgent}</span>
                     <span className="text-[11px] text-gray-400">{new Date(m.createdAt).toLocaleTimeString()}</span>
+                    {msgTokens(m) != null && (
+                      <span
+                        className="text-[11px] text-gray-400"
+                        title={`input ${m.inputTokens ?? 0} · output ${m.outputTokens ?? 0} · cache read ${m.cacheReadTokens ?? 0} · cache write ${m.cacheCreationTokens ?? 0}`}
+                      >
+                        · {fmtTokens(msgTokens(m)!)} tok
+                      </span>
+                    )}
                   </div>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200">{renderBody(m.body)}</p>
                 </div>

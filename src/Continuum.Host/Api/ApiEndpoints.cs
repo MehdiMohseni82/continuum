@@ -203,7 +203,8 @@ public static class ApiEndpoints
         // Agents post here (or via channel_post to the room's channel). Rejected once the room is closed.
         api.MapPost("/rooms/{id:guid}/post", async (Guid id, RoomPostRequest req, RoomService rooms, CancellationToken ct) =>
         {
-            var msg = await rooms.PostAsync(id, req.FromAgent.Trim(), req.Body, ct);
+            var msg = await rooms.PostAsync(id, req.FromAgent.Trim(), req.Body, ct,
+                req.InputTokens, req.OutputTokens, req.CacheReadTokens, req.CacheCreationTokens);
             return msg is null ? Results.Conflict("Room not found or closed.") : Results.Ok(msg);
         });
 

@@ -54,7 +54,13 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         var stats = await db.AgentMessages
             .Where(m => m.ChannelId != null && channelIds.Contains(m.ChannelId!.Value))
             .GroupBy(m => m.ChannelId!.Value)
-            .Select(g => new { ChannelId = g.Key, Count = g.Count(), Last = g.Max(x => x.CreatedAt) })
+            .Select(g => new
+            {
+                ChannelId = g.Key,
+                Count = g.Count(),
+                Last = g.Max(x => x.CreatedAt),
+                Tokens = g.Sum(x => (long)((x.InputTokens ?? 0) + (x.OutputTokens ?? 0) + (x.CacheReadTokens ?? 0) + (x.CacheCreationTokens ?? 0)))
+            })
             .ToListAsync(ct);
         var statByChannel = stats.ToDictionary(s => s.ChannelId, s => s);
 
@@ -66,10 +72,10 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         return rooms.Select(r =>
         {
             var mc = memberCounts.TryGetValue(r.Id, out var m) ? m : 0;
-            int msgCount = 0; DateTimeOffset? last = null;
+            int msgCount = 0; DateTimeOffset? last = null; long tokens = 0;
             if (idByName.TryGetValue(r.ChannelName, out var chId) && statByChannel.TryGetValue(chId, out var s))
-            { msgCount = s.Count; last = s.Last; }
-            return ToDto(r, mc, msgCount, last);
+            { msgCount = s.Count; last = s.Last; tokens = s.Tokens; }
+            return ToDto(r, mc, msgCount, last, tokens);
         }).ToList();
     }
 
@@ -90,13 +96,14 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         {
             messages = await ChannelQuery(cid)
                 .OrderByDescending(m => m.Id).Take(take)
-                .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, null, m.Body, m.CreatedAt))
+                .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, null, m.Body, m.CreatedAt,
+                    m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheCreationTokens))
                 .ToListAsync(ct);
             messages.Reverse();
         }
 
-        var (count, last) = await ChannelStats(chId, ct);
-        return new RoomDetailDto(ToDto(room, members.Count, count, last), members, messages);
+        var (count, last, tokens) = await ChannelStats(chId, ct);
+        return new RoomDetailDto(ToDto(room, members.Count, count, last, tokens), members, messages);
     }
 
     public async Task<IReadOnlyList<MessageDto>> MessagesAsync(Guid id, long sinceId, int take, CancellationToken ct)
@@ -108,7 +115,8 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         return await ChannelQuery(chId.Value)
             .Where(m => m.Id > sinceId)
             .OrderBy(m => m.Id).Take(take)
-            .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, null, m.Body, m.CreatedAt))
+            .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, null, m.Body, m.CreatedAt,
+                m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheCreationTokens))
             .ToListAsync(ct);
     }
 
@@ -150,7 +158,8 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
     }
 
     /// <summary>Post a message into a room. Returns null if the room is missing/closed.</summary>
-    public async Task<MessageDto?> PostAsync(Guid id, string fromAgent, string body, CancellationToken ct)
+    public async Task<MessageDto?> PostAsync(Guid id, string fromAgent, string body, CancellationToken ct,
+        int? inputTokens = null, int? outputTokens = null, int? cacheReadTokens = null, int? cacheCreationTokens = null)
     {
         var room = await FindVisibleAsync(id, ct);
         if (room is null || room.Status == "closed") return null;
@@ -163,11 +172,16 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
             ChannelId = channel.Id,
             Body = body,
             CreatedAt = DateTimeOffset.UtcNow,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            CacheReadTokens = cacheReadTokens,
+            CacheCreationTokens = cacheCreationTokens,
         };
         db.AgentMessages.Add(msg);
         await db.SaveChangesAsync(ct);
 
-        var dto = new MessageDto(msg.Id, from.Name, null, room.ChannelName, msg.Body, msg.CreatedAt);
+        var dto = new MessageDto(msg.Id, from.Name, null, room.ChannelName, msg.Body, msg.CreatedAt,
+            msg.InputTokens, msg.OutputTokens, msg.CacheReadTokens, msg.CacheCreationTokens);
         bus.PublishMessage(dto);
         return dto;
     }
@@ -187,14 +201,16 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
     private IQueryable<AgentMessage> ChannelQuery(Guid channelId) =>
         db.AgentMessages.Where(m => m.ChannelId == channelId);
 
-    private async Task<(int Count, DateTimeOffset? Last)> ChannelStats(Guid? channelId, CancellationToken ct)
+    private async Task<(int Count, DateTimeOffset? Last, long Tokens)> ChannelStats(Guid? channelId, CancellationToken ct)
     {
-        if (channelId is null) return (0, null);
+        if (channelId is null) return (0, null, 0);
         var cid = channelId.Value;
         var q = db.AgentMessages.Where(m => m.ChannelId == cid);
         var count = await q.CountAsync(ct);
-        var last = count == 0 ? (DateTimeOffset?)null : await q.MaxAsync(m => m.CreatedAt, ct);
-        return (count, last);
+        if (count == 0) return (0, null, 0);
+        var last = await q.MaxAsync(m => m.CreatedAt, ct);
+        var tokens = await q.SumAsync(m => (long)((m.InputTokens ?? 0) + (m.OutputTokens ?? 0) + (m.CacheReadTokens ?? 0) + (m.CacheCreationTokens ?? 0)), ct);
+        return (count, last, tokens);
     }
 
     private async Task<Agent> GetOrCreateAgentAsync(string name, CancellationToken ct)
@@ -222,7 +238,7 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         return channel;
     }
 
-    private static RoomDto ToDto(Room r, int memberCount, int messageCount, DateTimeOffset? lastActivity) =>
+    private static RoomDto ToDto(Room r, int memberCount, int messageCount, DateTimeOffset? lastActivity, long totalTokens = 0) =>
         new(r.Id, r.Name, r.Topic, r.LanguageMode, r.Language, r.Status, r.ChannelName,
-            r.CreatedAt, r.ClosedAt, memberCount, messageCount, lastActivity, r.SystemPrompt);
+            r.CreatedAt, r.ClosedAt, memberCount, messageCount, lastActivity, r.SystemPrompt, totalTokens);
 }

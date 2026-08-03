@@ -20,4 +20,12 @@ public class AgentMessage
     public bool Read { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    // Token usage of the agent turn that produced this message. Populated when a message is posted with
+    // usage data (e.g. the room relay reads it from the session transcript); null for messages posted
+    // without it. Used to show per-message and per-room token totals.
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
+    public int? CacheReadTokens { get; set; }
+    public int? CacheCreationTokens { get; set; }
 }
