@@ -46,9 +46,24 @@ try {
     $agent   = $bind.Groups[2].Value
 
     # ---- backend ----
+    # HTTP goes through curl.exe with -4: this machine's IPv6 route to Cloudflare is dead, and .NET's
+    # Invoke-RestMethod picks the AAAA address and hangs, so we force IPv4 with the native Windows curl.
     $cfg = Get-Content -LiteralPath (Join-Path $env:USERPROFILE 'Continuum\daemon\appsettings.json') -Raw | ConvertFrom-Json
     $backend = $cfg.Daemon.BackendUrl
-    $headers = @{ Authorization = "Bearer $($cfg.Daemon.Token)" }
+    $token   = [string]$cfg.Daemon.Token
+    function Api([string]$Method, [string]$Url, [string]$Body) {
+        $a = @('-4', '-s', '--max-time', '25', '-X', $Method, $Url, '-H', "Authorization: Bearer $token")
+        $tmp = $null
+        if ($Body) {
+            $tmp = [System.IO.Path]::GetTempFileName()
+            [System.IO.File]::WriteAllText($tmp, $Body, (New-Object System.Text.UTF8Encoding($false)))
+            $a += @('-H', 'Content-Type: application/json', '--data-binary', "@$tmp")
+        }
+        try { $out = & curl.exe @a; if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE" } }
+        finally { if ($tmp) { Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue } }
+        if ([string]::IsNullOrWhiteSpace($out)) { return $null }
+        return ($out | ConvertFrom-Json)
+    }
 
     # ---- state ----
     $state = if (Test-Path $statePath) { Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json } else { $null }
@@ -61,11 +76,12 @@ try {
 
     # ---- 2. room still open? (force-stop = close the room) ----
     $meta = $null
-    try { $meta = (Invoke-RestMethod -Uri "$backend/api/rooms" -Headers $headers -TimeoutSec 15) | Where-Object { $_.id -eq $roomId } | Select-Object -First 1 } catch { Log "rooms fetch failed: $($_.Exception.Message)" }
+    try { $meta = @(Api 'GET' "$backend/api/rooms") | Where-Object { $_.id -eq $roomId } | Select-Object -First 1 } catch { Log "rooms fetch failed: $($_.Exception.Message)" }
     if (-not $meta -or $meta.status -ne 'open') { Log 'room closed/gone; stopping'; Save; exit 0 }
 
-    # ---- my last message from the transcript ----
+    # ---- my last message from the transcript (+ its token usage) ----
     $mine = $null
+    $mineUsage = $null
     foreach ($line in [System.IO.File]::ReadLines($transcript)) {
         if (-not $line.Trim()) { continue }
         try { $o = $line | ConvertFrom-Json } catch { continue }
@@ -76,7 +92,7 @@ try {
             $t = ''
             if ($c -is [string]) { $t = $c }
             elseif ($c) { foreach ($blk in $c) { if ($blk.type -eq 'text' -and $blk.text) { $t += $blk.text } elseif ($blk -is [string]) { $t += $blk } } }
-            if ($t.Trim()) { $mine = $t.Trim() }
+            if ($t.Trim()) { $mine = $t.Trim(); $mineUsage = $o.message.usage }
         }
     }
 
@@ -89,15 +105,21 @@ try {
         if (-not $s) { return $false }
         return $s.Trim().Trim('*','_','`','"',"'",' ').StartsWith('[DONE]', [System.StringComparison]::OrdinalIgnoreCase)
     }
-    function Post([string]$body) {
-        return Invoke-RestMethod -Uri "$backend/api/rooms/$roomId/post" -Method Post -Headers $headers `
-            -ContentType 'application/json' -Body (@{ fromAgent = $agent; body = $body } | ConvertTo-Json) -TimeoutSec 20
+    function Post([string]$body, $usage) {
+        $payload = @{ fromAgent = $agent; body = $body }
+        if ($usage) {
+            if ($null -ne $usage.input_tokens)                { $payload.inputTokens         = [int]$usage.input_tokens }
+            if ($null -ne $usage.output_tokens)               { $payload.outputTokens        = [int]$usage.output_tokens }
+            if ($null -ne $usage.cache_read_input_tokens)     { $payload.cacheReadTokens     = [int]$usage.cache_read_input_tokens }
+            if ($null -ne $usage.cache_creation_input_tokens) { $payload.cacheCreationTokens = [int]$usage.cache_creation_input_tokens }
+        }
+        return Api 'POST' "$backend/api/rooms/$roomId/post" ($payload | ConvertTo-Json)
     }
 
     # ---- 3. post my message to the room (dedup on exact text) ----
     if ($mine -and -not (Is-NoPost $mine) -and $mine -ne $lastPosted) {
         try {
-            $posted = Post $mine
+            $posted = Post $mine $mineUsage
             $lastPosted = $mine
             if ($posted -and $posted.id) { $lastSeenId = [long]$posted.id }
             Log "posted ($($mine.Length) chars)"
@@ -131,7 +153,7 @@ try {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     while ($sw.Elapsed.TotalSeconds -lt 560) {
         $new = @()
-        try { $new = @(Invoke-RestMethod -Uri "$backend/api/rooms/$roomId/messages?since=$lastSeenId&take=50" -Headers $headers -TimeoutSec 20) } catch { Log "poll failed: $($_.Exception.Message)" }
+        try { $new = @(Api 'GET' "$backend/api/rooms/$roomId/messages?since=$lastSeenId&take=50") } catch { Log "poll failed: $($_.Exception.Message)" }
         if ($new.Count -gt 0) {
             # advance past our own echoes; deliver the first message from someone else.
             foreach ($m in $new) {
@@ -145,7 +167,7 @@ try {
                         Set-Content -LiteralPath $inbox -Value $m.body
                         $reason = "New room message from $($m.fromAgent) (large). Read it from: $inbox — then respond with your next action."
                     } else {
-                        $reason = "$($m.fromAgent): $($m.body)"
+                        $reason = "Room message from $($m.fromAgent) — your turn to respond:`n`n$($m.body)"
                     }
                     Log "delivering peer msg id=$($m.id) from $($m.fromAgent)"
                     @{ decision = 'block'; reason = $reason } | ConvertTo-Json -Compress
@@ -155,7 +177,7 @@ try {
             Save
         }
         # room may be force-stopped while we wait.
-        try { $meta = (Invoke-RestMethod -Uri "$backend/api/rooms" -Headers $headers -TimeoutSec 15) | Where-Object { $_.id -eq $roomId } | Select-Object -First 1 } catch {}
+        try { $meta = @(Api 'GET' "$backend/api/rooms") | Where-Object { $_.id -eq $roomId } | Select-Object -First 1 } catch {}
         if (-not $meta -or $meta.status -ne 'open') { Log 'room closed while waiting; stopping'; exit 0 }
         Start-Sleep -Seconds 2
     }

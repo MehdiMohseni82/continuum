@@ -4,7 +4,8 @@ namespace Continuum.Core.Contracts;
 
 public sealed record CreateRoomRequest(string Name, string Topic, LanguageMode LanguageMode, string? Language, string? SystemPrompt = null);
 public sealed record AddMemberRequest(string Agent);
-public sealed record RoomPostRequest(string FromAgent, string Body);
+public sealed record RoomPostRequest(string FromAgent, string Body,
+    int? InputTokens = null, int? OutputTokens = null, int? CacheReadTokens = null, int? CacheCreationTokens = null);
 
 /// <summary>Ask a server-side (Claude API) agent to take a turn now. Optional steer directs the message;
 /// optional agent picks which server agent speaks (defaults to the first configured one in the room).</summary>
@@ -25,7 +26,8 @@ public sealed record RoomDto(
     int MemberCount,
     int MessageCount,
     DateTimeOffset? LastActivityAt,
-    string? SystemPrompt = null);
+    string? SystemPrompt = null,
+    long TotalTokens = 0);
 
 public sealed record RoomDetailDto(
     RoomDto Room,

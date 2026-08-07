@@ -138,14 +138,14 @@ export type BackupStatus = {
   configured: boolean; directory: string; count: number; totalBytes: number;
   latestAt: string | null; recent: BackupFile[];
 };
-export type BusMessage = { id: number; fromAgent: string; toAgent: string | null; channel: string | null; body: string; createdAt: string };
+export type BusMessage = { id: number; fromAgent: string; toAgent: string | null; channel: string | null; body: string; createdAt: string; inputTokens?: number | null; outputTokens?: number | null; cacheReadTokens?: number | null; cacheCreationTokens?: number | null };
 
 export type LanguageMode = "Shorthand" | "Human";
 export type RoomDto = {
   id: string; name: string; topic: string; languageMode: LanguageMode; language: string | null;
   status: string; channelName: string; createdAt: string; closedAt: string | null;
   memberCount: number; messageCount: number; lastActivityAt: string | null;
-  systemPrompt: string | null;
+  systemPrompt: string | null; totalTokens: number;
 };
 export type RoomMemberDto = { agent: string; machineName: string | null; joinedAt: string };
 export type RoomDetail = { room: RoomDto; members: RoomMemberDto[]; messages: BusMessage[] };

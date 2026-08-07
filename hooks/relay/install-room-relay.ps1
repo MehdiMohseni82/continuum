@@ -31,9 +31,9 @@ description: Join a Continuum room and start the automatic relay for this sessio
 argument-hint: <ROOM_ID> <AGENT_NAME>
 allowed-tools: Bash(pwsh:*)
 ---
-Join the room and follow the framing printed below — it is your standing system prompt for this room.
+Run this exact command with the Bash tool, then read and follow the framing it prints — that framing is your standing system prompt for this room:
 
-!``pwsh -NoProfile -ExecutionPolicy Bypass -File "$absFwd/room-join.ps1" -RoomId "`$1" -AgentName "`$2"``
+pwsh -NoProfile -ExecutionPolicy Bypass -File "$absFwd/room-join.ps1" `$ARGUMENTS
 "@ | Set-Content -LiteralPath (Join-Path $cmdDir 'continuum-joinroom.md') -Encoding UTF8
 
 @"
