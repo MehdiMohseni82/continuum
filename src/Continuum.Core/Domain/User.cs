@@ -1,13 +1,5 @@
 namespace Continuum.Core.Domain;
 
-public enum UserRole
-{
-    /// <summary>Sees only their own (and shared) data; manages their own tokens.</summary>
-    Member = 0,
-    /// <summary>Sees all data and manages users.</summary>
-    Admin = 1,
-}
-
 /// <summary>
 /// A person with a login. The bootstrap admin is seeded with <see cref="Defaults.DefaultOwnerId"/>
 /// so all pre-accounts data (which carried that owner id) belongs to them with no data migration.

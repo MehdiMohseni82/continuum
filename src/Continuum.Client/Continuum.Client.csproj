@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The client-side half of the domain: wire contracts, the tolerant JSONL parser, room turn logic,
+    and the enums those depend on. Deliberately free of EF Core, Npgsql, Pgvector and the Anthropic
+    SDK so the daemon, the MCP server and the desktop app don't ship a database stack they never use.
+    Namespaces stay Continuum.Core.* so this split is invisible to consumers.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
