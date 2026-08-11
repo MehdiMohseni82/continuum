@@ -94,6 +94,9 @@ builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton<Continuum.Host.Auth.TokenSigner>();
 builder.Services.AddScoped<Continuum.Host.Auth.CurrentUserAccessor>();
 builder.Services.AddScoped<Continuum.Host.Auth.ICurrentUser>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
+// The single source of truth for data visibility. Every service asks this instead of restating the rule.
+builder.Services.AddScoped<Continuum.Core.Access.IAccessPrincipal>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
+builder.Services.AddScoped<Continuum.Core.Access.IAccessPolicy, Continuum.Core.Access.AccessPolicy>();
 builder.Services.AddScoped<Continuum.Host.Auth.AuthFilter>();
 builder.Services.AddScoped<AuthService>();
 

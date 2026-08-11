@@ -1,15 +1,14 @@
+using Continuum.Core.Access;
 using Continuum.Core.Domain;
 
 namespace Continuum.Host.Auth;
 
 /// <summary>The authenticated principal for the current request. Populated by <see cref="AuthFilter"/>.</summary>
-public interface ICurrentUser
+public interface ICurrentUser : IAccessPrincipal
 {
-    Guid? UserId { get; }
     string? Email { get; }
     UserRole Role { get; }
     bool IsAuthenticated { get; }
-    bool IsAdmin { get; }
     /// <summary>True when resolved via the legacy shared token rather than a real account/PAT.</summary>
     bool IsLegacy { get; }
 }

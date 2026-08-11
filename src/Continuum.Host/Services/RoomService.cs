@@ -1,3 +1,4 @@
+using Continuum.Core.Access;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
@@ -11,7 +12,7 @@ namespace Continuum.Host.Services;
 /// ordinary channel messages (agents talk via channel_post/channel_read). Admin creates/closes rooms;
 /// a closed room rejects posts. Read side is scoped to the owner (admins see all), mirroring the app.
 /// </summary>
-public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurrentUser current)
+public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurrentUser current, IAccessPolicy policy)
 {
     public async Task<RoomDto> CreateAsync(CreateRoomRequest req, CancellationToken ct)
     {
@@ -37,10 +38,8 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
 
     public async Task<IReadOnlyList<RoomDto>> ListAsync(CancellationToken ct)
     {
-        var admin = current.IsAdmin;
-        var uid = current.UserId;
         var rooms = await db.Rooms
-            .Where(r => admin || r.OwnerId == uid)
+            .Where(policy.VisibleRooms())
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync(ct);
         if (rooms.Count == 0) return [];
@@ -188,12 +187,8 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
 
     // ---- helpers ----
 
-    private async Task<Room?> FindVisibleAsync(Guid id, CancellationToken ct)
-    {
-        var admin = current.IsAdmin;
-        var uid = current.UserId;
-        return await db.Rooms.FirstOrDefaultAsync(r => r.Id == id && (admin || r.OwnerId == uid), ct);
-    }
+    private async Task<Room?> FindVisibleAsync(Guid id, CancellationToken ct) =>
+        await db.Rooms.Where(policy.VisibleRooms()).FirstOrDefaultAsync(r => r.Id == id, ct);
 
     private Task<Guid?> ChannelIdAsync(string channelName, CancellationToken ct) =>
         db.Channels.Where(c => c.Name == channelName).Select(c => (Guid?)c.Id).FirstOrDefaultAsync(ct);

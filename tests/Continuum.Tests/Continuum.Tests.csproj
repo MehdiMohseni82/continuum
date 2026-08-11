@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!--
+      These projects target net9.0, but a machine may only have the .NET 10 runtime installed; the
+      default roll-forward policy won't cross a major version, so the test host refuses to start.
+      CI pins 9.0.x and still selects it, since an exact match always wins over rolling forward.
+    -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <ItemGroup>
