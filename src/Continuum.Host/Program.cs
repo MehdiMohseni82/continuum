@@ -94,6 +94,9 @@ builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton<Continuum.Host.Auth.TokenSigner>();
 builder.Services.AddScoped<Continuum.Host.Auth.CurrentUserAccessor>();
 builder.Services.AddScoped<Continuum.Host.Auth.ICurrentUser>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
+// The single source of truth for data visibility. Every service asks this instead of restating the rule.
+builder.Services.AddScoped<Continuum.Core.Access.IAccessPrincipal>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
+builder.Services.AddScoped<Continuum.Core.Access.IAccessPolicy, Continuum.Core.Access.AccessPolicy>();
 builder.Services.AddScoped<Continuum.Host.Auth.AuthFilter>();
 builder.Services.AddScoped<AuthService>();
 
@@ -111,6 +114,21 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ContinuumDbContext>();
     db.Database.Migrate();
+
+    // Bootstrap the organization that holds all pre-tenancy data. The migration backfills existing
+    // rows to this id, so it must exist before anything reads them. Idempotent.
+    if (!await db.Organizations.AnyAsync(o => o.Id == Continuum.Core.Domain.Defaults.DefaultOrgId))
+    {
+        db.Organizations.Add(new Continuum.Core.Domain.Organization
+        {
+            Id = Continuum.Core.Domain.Defaults.DefaultOrgId,
+            Name = builder.Configuration["Auth:DefaultOrgName"] ?? "Default",
+            Slug = "default",
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        app.Logger.LogInformation("Bootstrapped the default organization.");
+    }
 
     // Bootstrap the admin account (id = DefaultOwnerId, so it owns all pre-accounts data).
     // Idempotent: only creates it when no user with that id exists yet.
@@ -138,6 +156,35 @@ using (var scope = app.Services.CreateScope())
         {
             app.Logger.LogWarning("No admin account and Auth:AdminEmail/AdminPassword not set — set them to enable login.");
         }
+    }
+
+    // Enrol anyone not yet in an organization. Without a membership the access policy shows a user
+    // nothing, so this runs every start and covers both the upgrade and any account created before
+    // organizations existed. Idempotent.
+    var unenrolled = await db.Users
+        .Where(u => !db.OrgMemberships.Any(m => m.UserId == u.Id))
+        .Select(u => new { u.Id, u.Role })
+        .ToListAsync();
+
+    if (unenrolled.Count > 0)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var u in unenrolled)
+        {
+            db.OrgMemberships.Add(new Continuum.Core.Domain.OrgMembership
+            {
+                Id = Guid.NewGuid(),
+                OrgId = Continuum.Core.Domain.Defaults.DefaultOrgId,
+                UserId = u.Id,
+                // The bootstrap admin founded this organization; instance admins administer it.
+                Role = u.Id == Continuum.Core.Domain.Defaults.DefaultOwnerId ? Continuum.Core.Domain.OrgRole.Owner
+                     : u.Role == Continuum.Core.Domain.UserRole.Admin ? Continuum.Core.Domain.OrgRole.Admin
+                     : Continuum.Core.Domain.OrgRole.Member,
+                JoinedAt = now,
+            });
+        }
+        await db.SaveChangesAsync();
+        app.Logger.LogInformation("Enrolled {Count} user(s) into the default organization.", unenrolled.Count);
     }
 }
 

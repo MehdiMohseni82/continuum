@@ -1,3 +1,4 @@
+using Continuum.Core.Access;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
@@ -6,8 +7,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Continuum.Host.Services;
 
 /// <summary>The inter-agent bus: registration/presence, direct messages, channels, and task hand-offs.</summary>
-public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus)
+public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus, IAccessPolicy policy)
 {
+    // Names are resolved inside the caller's organization: two tenants may both have an "alpha".
+    private Guid Org => policy.WriteOrgId;
+
     // ---- agents ----
 
     public async Task<AgentDto> RegisterAsync(RegisterAgentRequest req, CancellationToken ct)
@@ -51,7 +55,7 @@ public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus)
 
     public async Task<IReadOnlyList<MessageDto>> InboxAsync(string agentName, bool unreadOnly, bool markRead, CancellationToken ct)
     {
-        var agent = await db.Agents.FirstOrDefaultAsync(a => a.Name == agentName, ct);
+        var agent = await db.Agents.FirstOrDefaultAsync(a => a.OrgId == Org && a.Name == agentName, ct);
         if (agent is null) return [];
 
         var q = db.AgentMessages.Where(m => m.ToAgentId == agent.Id);
@@ -94,7 +98,7 @@ public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus)
 
     public async Task<IReadOnlyList<MessageDto>> ReadChannelAsync(string channelName, long sinceId, int take, CancellationToken ct)
     {
-        var channel = await db.Channels.FirstOrDefaultAsync(c => c.Name == channelName, ct);
+        var channel = await db.Channels.FirstOrDefaultAsync(c => c.OrgId == Org && c.Name == channelName, ct);
         if (channel is null) return [];
 
         return await db.AgentMessages
@@ -164,11 +168,11 @@ public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus)
 
     private async Task<Agent> GetOrCreateAgentAsync(string name, CancellationToken ct)
     {
-        var agent = await db.Agents.FirstOrDefaultAsync(a => a.Name == name, ct);
+        var agent = await db.Agents.FirstOrDefaultAsync(a => a.OrgId == Org && a.Name == name, ct);
         if (agent is null)
         {
             var now = DateTimeOffset.UtcNow;
-            agent = new Agent { Id = Guid.NewGuid(), Name = name, RegisteredAt = now, LastSeenAt = now };
+            agent = new Agent { Id = Guid.NewGuid(), OrgId = Org, Name = name, RegisteredAt = now, LastSeenAt = now };
             db.Agents.Add(agent);
             await db.SaveChangesAsync(ct);
         }
@@ -177,10 +181,10 @@ public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus)
 
     private async Task<Channel> EnsureChannelAsync(string name, CancellationToken ct)
     {
-        var channel = await db.Channels.FirstOrDefaultAsync(c => c.Name == name, ct);
+        var channel = await db.Channels.FirstOrDefaultAsync(c => c.OrgId == Org && c.Name == name, ct);
         if (channel is null)
         {
-            channel = new Channel { Id = Guid.NewGuid(), Name = name, CreatedAt = DateTimeOffset.UtcNow };
+            channel = new Channel { Id = Guid.NewGuid(), OrgId = Org, Name = name, CreatedAt = DateTimeOffset.UtcNow };
             db.Channels.Add(channel);
             await db.SaveChangesAsync(ct);
         }

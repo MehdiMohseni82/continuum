@@ -9,14 +9,13 @@ namespace Continuum.Host.Services;
 /// Scans captured transcript events for secrets that landed in the archive (Phase 0 stores raw
 /// transcripts verbatim), so you can see what leaked and decide what to do. Read-only awareness.
 /// </summary>
-public sealed class RedactionReviewService(ContinuumDbContext db, Continuum.Host.Auth.ICurrentUser current)
+public sealed class RedactionReviewService(ContinuumDbContext db, Continuum.Core.Access.IAccessPolicy policy)
 {
     public async Task<IReadOnlyList<RedactionHitDto>> ScanAsync(int scanLimit, CancellationToken ct)
     {
-        var admin = current.IsAdmin;
-        var uid = current.UserId;
         var recent = await db.Events
-            .Where(e => e.TextExcerpt != null && (admin || e.Session!.OwnerId == uid || e.Session.Shared))
+            .Where(policy.VisibleEvents())
+            .Where(e => e.TextExcerpt != null)
             .OrderByDescending(e => e.Id).Take(scanLimit)
             .Select(e => new { e.Id, e.SessionId, e.TextExcerpt, Title = e.Session!.Title })
             .ToListAsync(ct);

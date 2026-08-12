@@ -20,6 +20,8 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
     public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<RoomMember> RoomMembers => Set<RoomMember>();
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrgMembership> OrgMemberships => Set<OrgMembership>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -32,10 +34,29 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.Property(m => m.Name).HasMaxLength(200);
         });
 
+        b.Entity<Organization>(e =>
+        {
+            e.HasKey(o => o.Id);
+            e.HasIndex(o => o.Slug).IsUnique();
+            e.Property(o => o.Name).HasMaxLength(200);
+            e.Property(o => o.Slug).HasMaxLength(100);
+        });
+
+        b.Entity<OrgMembership>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => new { m.OrgId, m.UserId }).IsUnique();
+            e.HasIndex(m => m.UserId);
+            e.HasOne(m => m.Organization).WithMany(o => o.Members).HasForeignKey(m => m.OrgId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<Workspace>(e =>
         {
             e.HasKey(w => w.Id);
-            e.HasIndex(w => w.ProjectKey).IsUnique();
+            // Per organization, not global: two tenants may each work on a repo with the same path,
+            // and they must not collapse into one shared row.
+            e.HasIndex(w => new { w.OrgId, w.ProjectKey }).IsUnique();
             e.HasIndex(w => w.OwnerId);
             e.Property(w => w.ProjectKey).HasMaxLength(512);
             e.Property(w => w.DisplayName).HasMaxLength(512);
@@ -49,6 +70,7 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.HasIndex(s => s.LastEventAt);
             e.HasIndex(s => s.Status);
             e.HasIndex(s => s.OwnerId);
+            e.HasIndex(s => s.OrgId);
             e.HasIndex(s => s.Shared);
             e.Property(s => s.SummaryEmbedding).HasColumnType($"vector({EmbeddingConfig.Dimensions})");
             e.HasIndex(s => s.SummaryEmbedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
@@ -76,6 +98,7 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
         {
             e.HasKey(m => m.Id);
             e.HasIndex(m => m.OwnerId);
+            e.HasIndex(m => m.OrgId);
             e.HasIndex(m => m.WorkspaceId);
             e.HasIndex(m => m.Type);
             e.Property(m => m.Embedding).HasColumnType($"vector({EmbeddingConfig.Dimensions})");
@@ -93,17 +116,22 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.HasOne(c => c.Session).WithMany().HasForeignKey(c => c.SessionId);
         });
 
+        // Agents, channels and rooms are addressed by name, and that name has to mean one thing to
+        // everyone who shares a room — so uniqueness is per organization, not per user. Safe to change:
+        // every existing row has a single owner and already-distinct names, so nothing can collide.
         b.Entity<Agent>(e =>
         {
             e.HasKey(a => a.Id);
-            e.HasIndex(a => new { a.OwnerId, a.Name }).IsUnique();
+            e.HasIndex(a => new { a.OrgId, a.Name }).IsUnique();
+            e.HasIndex(a => a.OwnerId);
             e.Property(a => a.Name).HasMaxLength(128);
         });
 
         b.Entity<Channel>(e =>
         {
             e.HasKey(c => c.Id);
-            e.HasIndex(c => new { c.OwnerId, c.Name }).IsUnique();
+            e.HasIndex(c => new { c.OrgId, c.Name }).IsUnique();
+            e.HasIndex(c => c.OwnerId);
             e.Property(c => c.Name).HasMaxLength(128);
         });
 
@@ -148,7 +176,8 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
         b.Entity<Room>(e =>
         {
             e.HasKey(r => r.Id);
-            e.HasIndex(r => new { r.OwnerId, r.Name }).IsUnique();
+            e.HasIndex(r => new { r.OrgId, r.Name }).IsUnique();
+            e.HasIndex(r => r.OwnerId);
             e.HasIndex(r => r.Status);
             e.HasIndex(r => r.ChannelName);
             e.Property(r => r.Name).HasMaxLength(200);

@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using Continuum.Core.Access;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Host.Auth;
@@ -13,24 +14,29 @@ namespace Continuum.Host.Services;
 /// (input / output / cache-write / cache-read), matched by model family. Uses raw ADO to run the
 /// jsonb aggregation directly (EF's SqlQuery composition mangles GROUP BY).
 /// </summary>
-public sealed class TokenAnalyticsService(ContinuumDbContext db, ICurrentUser current)
+public sealed class TokenAnalyticsService(ContinuumDbContext db, IAccessPolicy policy)
 {
-    // Restrict event rows to the caller's visible sessions. Admins see everything. The owner id is a
-    // Guid formatted as a literal (no injection surface) since these queries take no user-supplied text.
-    private string EventScope()
+    /// <summary>A SQL fragment to append to a WHERE clause, plus the values it binds.</summary>
+    private sealed record Scope(string Sql, IReadOnlyList<SqlArg> Args)
     {
-        if (current.IsAdmin) return "";
-        var uid = current.UserId ?? Guid.Empty;
-        return $" AND EXISTS (SELECT 1 FROM \"Sessions\" ss WHERE ss.\"Id\"=e.\"SessionId\" " +
-               $"AND (ss.\"OwnerId\"='{uid}' OR ss.\"Shared\"))";
+        public static readonly Scope None = new("", []);
     }
 
-    // For the project query which already joins Sessions as s.
-    private string JoinedScope()
+    // Restrict event rows to the caller's visible sessions. The rule itself comes from the policy —
+    // these queries used to spell it out, which is exactly the kind of duplicate no compiler checks.
+    private Scope EventScope()
     {
-        if (current.IsAdmin) return "";
-        var uid = current.UserId ?? Guid.Empty;
-        return $" AND (s.\"OwnerId\"='{uid}' OR s.\"Shared\")";
+        var p = policy.VisibleSessionsSql("ss");
+        return p.IsUnrestricted
+            ? Scope.None
+            : new Scope($" AND EXISTS (SELECT 1 FROM \"Sessions\" ss WHERE ss.\"Id\"=e.\"SessionId\" AND {p.Sql})", p.Args);
+    }
+
+    // For the project query, which already joins Sessions as s.
+    private Scope JoinedScope()
+    {
+        var p = policy.VisibleSessionsSql("s");
+        return p.IsUnrestricted ? Scope.None : new Scope($" AND {p.Sql}", p.Args);
     }
 
     // Each SUM cast to bigint so ADO reads it as Int64 (SUM(bigint) is numeric in Postgres).
@@ -50,18 +56,21 @@ public sealed class TokenAnalyticsService(ContinuumDbContext db, ICurrentUser cu
         var joinedScope = JoinedScope();
 
         var byModelRaw = await QueryAsync(conn,
-            $"SELECT e.\"RawJson\"->'message'->>'model', {Sums} FROM \"Events\" e WHERE {HasUsage}{eventScope} GROUP BY 1",
+            $"SELECT e.\"RawJson\"->'message'->>'model', {Sums} FROM \"Events\" e WHERE {HasUsage}{eventScope.Sql} GROUP BY 1",
+            eventScope.Args,
             r => new ModelRow(Str(r, 0), L(r, 1), L(r, 2), L(r, 3), L(r, 4)), ct);
 
         var projectRaw = await QueryAsync(conn,
             $"SELECT w.\"DisplayName\", e.\"RawJson\"->'message'->>'model', {Sums} " +
             "FROM \"Events\" e JOIN \"Sessions\" s ON s.\"Id\"=e.\"SessionId\" JOIN \"Workspaces\" w ON w.\"Id\"=s.\"WorkspaceId\" " +
-            $"WHERE {HasUsage}{joinedScope} GROUP BY 1,2",
+            $"WHERE {HasUsage}{joinedScope.Sql} GROUP BY 1,2",
+            joinedScope.Args,
             r => new DimRow(Str(r, 0) ?? "(unknown)", Str(r, 1), L(r, 2), L(r, 3), L(r, 4), L(r, 5)), ct);
 
         var dayRaw = await QueryAsync(conn,
             "SELECT to_char(date_trunc('day', e.\"Timestamp\"),'MM-DD'), e.\"RawJson\"->'message'->>'model', " + Sums +
-            $"FROM \"Events\" e WHERE {HasUsage} AND e.\"Timestamp\" >= now() - interval '30 days'{eventScope} GROUP BY 1,2 ORDER BY 1",
+            $"FROM \"Events\" e WHERE {HasUsage} AND e.\"Timestamp\" >= now() - interval '30 days'{eventScope.Sql} GROUP BY 1,2 ORDER BY 1",
+            eventScope.Args,
             r => new DimRow(Str(r, 0) ?? "", Str(r, 1), L(r, 2), L(r, 3), L(r, 4), L(r, 5)), ct);
 
         var byModel = byModelRaw
@@ -89,10 +98,18 @@ public sealed class TokenAnalyticsService(ContinuumDbContext db, ICurrentUser cu
             byModel.Sum(m => m.CostUsd), byModel, byProject, perDay);
     }
 
-    private static async Task<List<T>> QueryAsync<T>(DbConnection conn, string sql, Func<DbDataReader, T> map, CancellationToken ct)
+    private static async Task<List<T>> QueryAsync<T>(
+        DbConnection conn, string sql, IReadOnlyList<SqlArg> args, Func<DbDataReader, T> map, CancellationToken ct)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
+        foreach (var a in args)
+        {
+            var p = cmd.CreateParameter();
+            p.ParameterName = a.Name;
+            p.Value = a.Value;
+            cmd.Parameters.Add(p);
+        }
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         var list = new List<T>();
         while (await reader.ReadAsync(ct)) list.Add(map(reader));

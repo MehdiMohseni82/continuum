@@ -31,6 +31,9 @@ public class Room
     /// <summary>The backing bus channel that carries this room's messages.</summary>
     public required string ChannelName { get; set; }
 
+    /// <summary>The organization this belongs to. No query crosses organizations.</summary>
+    public Guid OrgId { get; set; } = Defaults.DefaultOrgId;
+
     /// <summary>The admin who owns the room.</summary>
     public Guid OwnerId { get; set; } = Defaults.DefaultOwnerId;
 

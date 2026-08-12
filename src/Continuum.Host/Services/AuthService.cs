@@ -21,6 +21,19 @@ public sealed class AuthService(ContinuumDbContext db)
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) =>
         db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
+    /// <summary>
+    /// The organization a request by this user acts in. A user may belong to several; until there is a
+    /// way to choose (an explicit switcher in the UI, or a header for tools), the oldest membership
+    /// wins, which is stable and matches the single-organization case exactly. Null when they belong
+    /// to none — the access policy reads that as seeing nothing.
+    /// </summary>
+    public Task<Guid?> PrimaryOrgIdAsync(Guid userId, CancellationToken ct) =>
+        db.OrgMemberships
+            .Where(m => m.UserId == userId)
+            .OrderBy(m => m.JoinedAt).ThenBy(m => m.Id)
+            .Select(m => (Guid?)m.OrgId)
+            .FirstOrDefaultAsync(ct);
+
     /// <summary>Validate credentials. Returns the user on success, null on any failure (unknown, wrong, disabled).</summary>
     public async Task<User?> LoginAsync(string email, string password, CancellationToken ct)
     {
@@ -44,6 +57,19 @@ public sealed class AuthService(ContinuumDbContext db)
             CreatedAt = DateTimeOffset.UtcNow,
         };
         db.Users.Add(user);
+
+        // A user with no membership sees nothing, so enrol them as they're created. Phase 2 has one
+        // organization; choosing which one (an invite, or the creating admin's) comes with orgs in
+        // the UI.
+        db.OrgMemberships.Add(new OrgMembership
+        {
+            Id = Guid.NewGuid(),
+            OrgId = Defaults.DefaultOrgId,
+            UserId = user.Id,
+            Role = role == UserRole.Admin ? OrgRole.Admin : OrgRole.Member,
+            JoinedAt = DateTimeOffset.UtcNow,
+        });
+
         await db.SaveChangesAsync(ct);
         return user;
     }

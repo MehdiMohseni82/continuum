@@ -8,6 +8,9 @@ public class Agent
     /// <summary>Human-chosen handle, unique per owner (e.g. "researcher", "implementer").</summary>
     public required string Name { get; set; }
 
+    /// <summary>The organization this belongs to. No query crosses organizations.</summary>
+    public Guid OrgId { get; set; } = Defaults.DefaultOrgId;
+
     public Guid OwnerId { get; set; } = Defaults.DefaultOwnerId;
 
     public string? MachineName { get; set; }

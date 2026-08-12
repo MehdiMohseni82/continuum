@@ -16,6 +16,9 @@ public class Session
     public Guid WorkspaceId { get; set; }
     public Workspace? Workspace { get; set; }
 
+    /// <summary>The organization this belongs to. No query crosses organizations.</summary>
+    public Guid OrgId { get; set; } = Defaults.DefaultOrgId;
+
     /// <summary>The user this session belongs to. Defaults to the stand-in owner (the bootstrap admin).</summary>
     public Guid OwnerId { get; set; } = Defaults.DefaultOwnerId;
 

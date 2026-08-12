@@ -1,3 +1,4 @@
+using Continuum.Core.Access;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
@@ -11,7 +12,7 @@ using Pgvector.EntityFrameworkCore;
 namespace Continuum.Host.Services;
 
 /// <summary>Durable memory: redact → embed → store, and cosine-similarity recall with salience boost.</summary>
-public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICurrentUser current)
+public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICurrentUser current, IAccessPolicy policy)
 {
     private Guid OwnerFor(Guid? explicitOwner) => explicitOwner ?? current.UserId ?? Defaults.DefaultOwnerId;
 
@@ -57,6 +58,7 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICu
         var item = new MemoryItem
         {
             Id = Guid.NewGuid(),
+            OrgId = policy.WriteOrgId,
             OwnerId = OwnerFor(ownerId),
             Type = req.Type,
             Content = redacted,
@@ -77,9 +79,7 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICu
     {
         var q = new Vector(await embedder.EmbedAsync(query, ct));
 
-        var admin = current.IsAdmin;
-        var uid = current.UserId;
-        var baseQuery = db.Memories.Where(m => m.Embedding != null && (admin || m.OwnerId == uid || m.Shared));
+        var baseQuery = db.Memories.Where(policy.VisibleMemories()).Where(m => m.Embedding != null);
         if (workspaceId is { } w)
             baseQuery = baseQuery.Where(m => m.WorkspaceId == w || m.WorkspaceId == null);
 
@@ -103,9 +103,7 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICu
 
     public async Task<IReadOnlyList<MemoryDto>> ListAsync(Guid? workspaceId, MemoryType? type, int take, CancellationToken ct)
     {
-        var admin = current.IsAdmin;
-        var uid = current.UserId;
-        var q = db.Memories.Where(m => admin || m.OwnerId == uid || m.Shared);
+        var q = db.Memories.Where(policy.VisibleMemories());
         if (workspaceId is { } w) q = q.Where(m => m.WorkspaceId == w);
         if (type is { } t) q = q.Where(m => m.Type == t);
 
@@ -121,7 +119,7 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICu
     {
         var item = await db.Memories.FirstOrDefaultAsync(m => m.Id == id, ct);
         if (item is null) return null;
-        if (!current.IsAdmin && item.OwnerId != current.UserId) return null; // not yours to edit
+        if (!policy.CanControl(item)) return null; // not yours to edit
 
         if (req.Content is { } content && !string.IsNullOrWhiteSpace(content) && content != item.Content)
         {
@@ -142,10 +140,9 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICu
 
     public async Task<bool> ForgetAsync(Guid id, CancellationToken ct)
     {
-        var admin = current.IsAdmin;
-        var uid = current.UserId;
         var deleted = await db.Memories
-            .Where(m => m.Id == id && (admin || m.OwnerId == uid))
+            .Where(policy.ControlledMemories())
+            .Where(m => m.Id == id)
             .ExecuteDeleteAsync(ct);
         return deleted > 0;
     }

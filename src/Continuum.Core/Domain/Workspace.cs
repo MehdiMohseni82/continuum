@@ -15,6 +15,9 @@ public class Workspace
     /// <summary>Friendly name shown in the UI; defaults to the project key.</summary>
     public required string DisplayName { get; set; }
 
+    /// <summary>The organization this belongs to. No query crosses organizations.</summary>
+    public Guid OrgId { get; set; } = Defaults.DefaultOrgId;
+
     /// <summary>Team-ready seam: every workspace has an owner. Single-user resolves to a default id.</summary>
     public Guid OwnerId { get; set; } = Defaults.DefaultOwnerId;
 
