@@ -3,10 +3,12 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Restore against just the project files first for better layer caching.
+COPY src/Continuum.Client/Continuum.Client.csproj src/Continuum.Client/
 COPY src/Continuum.Core/Continuum.Core.csproj src/Continuum.Core/
 COPY src/Continuum.Host/Continuum.Host.csproj src/Continuum.Host/
 RUN dotnet restore src/Continuum.Host/Continuum.Host.csproj
 
+COPY src/Continuum.Client/ src/Continuum.Client/
 COPY src/Continuum.Core/ src/Continuum.Core/
 COPY src/Continuum.Host/ src/Continuum.Host/
 RUN dotnet publish src/Continuum.Host/Continuum.Host.csproj -c Release -o /app --no-restore
