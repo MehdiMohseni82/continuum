@@ -58,6 +58,7 @@ public sealed class MemoryService(ContinuumDbContext db, IEmbedder embedder, ICu
         var item = new MemoryItem
         {
             Id = Guid.NewGuid(),
+            OrgId = policy.WriteOrgId,
             OwnerId = OwnerFor(ownerId),
             Type = req.Type,
             Content = redacted,

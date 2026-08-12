@@ -13,6 +13,13 @@ public interface IAccessPrincipal
 {
     Guid? UserId { get; }
     bool IsAdmin { get; }
+
+    /// <summary>
+    /// The organization this request acts in. Every rule is confined to it, administrators included:
+    /// operating the instance is not the same as being allowed to read what its tenants hold.
+    /// Null means the caller belongs to no organization and therefore sees nothing.
+    /// </summary>
+    Guid? OrgId { get; }
 }
 
 /// <summary>
@@ -67,6 +74,17 @@ public interface IAccessPolicy
     /// <summary>Imperative form of <see cref="ControlledMemories"/>, for an entity already loaded.</summary>
     bool CanControl(MemoryItem memory);
 
+    /// <summary>
+    /// The organization new rows belong to, and the one to resolve names in — an agent or channel is
+    /// looked up within the caller's organization, never across the instance.
+    /// <para>
+    /// A caller with no membership falls back to the pre-tenancy organization. That is reachable only
+    /// before memberships exist, since the migration enrols every existing user and account creation
+    /// enrols every new one; it exists so an upgrade can't strand a request with nowhere to write.
+    /// </para>
+    /// </summary>
+    Guid WriteOrgId { get; }
+
     // ---- raw SQL ----
 
     /// <summary>
@@ -103,65 +121,86 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
     private bool SeesEverything => caller.IsAdmin;
     private Guid? CallerId => caller.UserId;
 
+    // A caller with no organization matches nothing. Guid.Empty is never a real OrgId, so comparing
+    // against it denies cleanly instead of leaving the tenant clause off altogether.
+    private Guid OrgScope => caller.OrgId ?? Guid.Empty;
+
+    public Guid WriteOrgId => caller.OrgId ?? Defaults.DefaultOrgId;
+
     public Expression<Func<Session, bool>> VisibleSessions()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return s => all || s.OwnerId == uid || s.Shared;
+        var org = OrgScope;
+        return s => s.OrgId == org && (all || s.OwnerId == uid || s.Shared);
     }
 
     public Expression<Func<Event, bool>> VisibleEvents()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return e => all || e.Session!.OwnerId == uid || e.Session.Shared;
+        var org = OrgScope;
+        return e => e.Session!.OrgId == org && (all || e.Session.OwnerId == uid || e.Session.Shared);
     }
 
     public Expression<Func<MemoryItem, bool>> VisibleMemories()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return m => all || m.OwnerId == uid || m.Shared;
+        var org = OrgScope;
+        return m => m.OrgId == org && (all || m.OwnerId == uid || m.Shared);
     }
 
     public Expression<Func<Room, bool>> VisibleRooms()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return r => all || r.OwnerId == uid;
+        var org = OrgScope;
+        return r => r.OrgId == org && (all || r.OwnerId == uid);
     }
 
     public Expression<Func<Session, bool>> ControlledSessions()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return s => all || s.OwnerId == uid;
+        var org = OrgScope;
+        return s => s.OrgId == org && (all || s.OwnerId == uid);
     }
 
     public Expression<Func<MemoryItem, bool>> ControlledMemories()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return m => all || m.OwnerId == uid;
+        var org = OrgScope;
+        return m => m.OrgId == org && (all || m.OwnerId == uid);
     }
 
     public Expression<Func<Workspace, bool>> ControlledWorkspaces()
     {
         var all = SeesEverything;
         var uid = CallerId;
-        return w => all || w.OwnerId == uid;
+        var org = OrgScope;
+        return w => w.OrgId == org && (all || w.OwnerId == uid);
     }
 
-    public bool CanControl(MemoryItem memory) => SeesEverything || memory.OwnerId == CallerId;
+    public bool CanControl(MemoryItem memory) =>
+        memory.OrgId == OrgScope && (SeesEverything || memory.OwnerId == CallerId);
 
     public SqlPredicate VisibleSessionsSql(string sessionAlias)
     {
-        if (SeesEverything) return SqlPredicate.Unrestricted;
+        var org = OrgScope;
 
-        // Guid.Empty matches nothing, which is the correct reading of an unauthenticated caller.
+        // The organization clause is never optional — an administrator is unrestricted *within* their
+        // organization, not across the instance.
+        if (SeesEverything)
+            return new SqlPredicate(
+                $"({sessionAlias}.\"OrgId\" = @scopeOrgId)",
+                [new SqlArg("scopeOrgId", org)]);
+
+        // Guid.Empty matches nothing, which is the correct reading of a caller with no identity.
         var uid = CallerId ?? Guid.Empty;
         return new SqlPredicate(
-            $"({sessionAlias}.\"OwnerId\" = @scopeOwnerId OR {sessionAlias}.\"Shared\")",
-            [new SqlArg("scopeOwnerId", uid)]);
+            $"({sessionAlias}.\"OrgId\" = @scopeOrgId AND ({sessionAlias}.\"OwnerId\" = @scopeOwnerId OR {sessionAlias}.\"Shared\"))",
+            [new SqlArg("scopeOrgId", org), new SqlArg("scopeOwnerId", uid)]);
     }
 }

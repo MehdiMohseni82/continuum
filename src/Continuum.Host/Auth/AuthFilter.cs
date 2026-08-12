@@ -44,9 +44,13 @@ public sealed class AuthFilter(
         if (userId is null) return false;
         var user = await auth.FindByIdAsync(userId.Value, http.RequestAborted);
         if (user is null || user.Disabled) return false;
-        cur.Set(user, legacy: false);
+        await SetAsync(cur, user, legacy: false, http.RequestAborted);
         return true;
     }
+
+    /// <summary>Resolve which organization the request acts in, then fill the principal.</summary>
+    private async Task SetAsync(CurrentUserAccessor cur, User user, bool legacy, CancellationToken ct) =>
+        cur.Set(user, legacy, await auth.PrimaryOrgIdAsync(user.Id, ct));
 
     private async Task<bool> ResolveBearerAsync(HttpContext http, CurrentUserAccessor cur)
     {
@@ -64,13 +68,14 @@ public sealed class AuthFilter(
         {
             var admin = await auth.FindByIdAsync(Defaults.DefaultOwnerId, http.RequestAborted)
                         ?? new User { Id = Defaults.DefaultOwnerId, Email = "admin@continuum.local", DisplayName = "Admin", PasswordHash = "", Role = UserRole.Admin };
-            cur.Set(admin, legacy: true);
+            // The legacy token predates organizations, so it acts in the one that holds pre-tenancy data.
+            cur.Set(admin, legacy: true, await auth.PrimaryOrgIdAsync(admin.Id, http.RequestAborted) ?? Defaults.DefaultOrgId);
             return true;
         }
 
         var user = await auth.ResolvePatAsync(presented, http.RequestAborted);
         if (user is null) return false;
-        cur.Set(user, legacy: false);
+        await SetAsync(cur, user, legacy: false, http.RequestAborted);
         return true;
     }
 }

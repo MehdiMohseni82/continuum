@@ -14,6 +14,8 @@ namespace Continuum.Host.Services;
 /// </summary>
 public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurrentUser current, IAccessPolicy policy)
 {
+    private Guid Org => policy.WriteOrgId;
+
     public async Task<RoomDto> CreateAsync(CreateRoomRequest req, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
@@ -27,6 +29,7 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
             SystemPrompt = string.IsNullOrWhiteSpace(req.SystemPrompt) ? null : req.SystemPrompt.Trim(),
             Status = "open",
             ChannelName = "room:" + Guid.NewGuid().ToString("N")[..12],
+            OrgId = Org,
             OwnerId = current.UserId ?? Defaults.DefaultOwnerId,
             CreatedAt = now,
         };
@@ -191,7 +194,7 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         await db.Rooms.Where(policy.VisibleRooms()).FirstOrDefaultAsync(r => r.Id == id, ct);
 
     private Task<Guid?> ChannelIdAsync(string channelName, CancellationToken ct) =>
-        db.Channels.Where(c => c.Name == channelName).Select(c => (Guid?)c.Id).FirstOrDefaultAsync(ct);
+        db.Channels.Where(c => c.OrgId == Org && c.Name == channelName).Select(c => (Guid?)c.Id).FirstOrDefaultAsync(ct);
 
     private IQueryable<AgentMessage> ChannelQuery(Guid channelId) =>
         db.AgentMessages.Where(m => m.ChannelId == channelId);
@@ -210,11 +213,11 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
 
     private async Task<Agent> GetOrCreateAgentAsync(string name, CancellationToken ct)
     {
-        var agent = await db.Agents.FirstOrDefaultAsync(a => a.Name == name, ct);
+        var agent = await db.Agents.FirstOrDefaultAsync(a => a.OrgId == Org && a.Name == name, ct);
         if (agent is null)
         {
             var now = DateTimeOffset.UtcNow;
-            agent = new Agent { Id = Guid.NewGuid(), Name = name, RegisteredAt = now, LastSeenAt = now };
+            agent = new Agent { Id = Guid.NewGuid(), OrgId = Org, Name = name, RegisteredAt = now, LastSeenAt = now };
             db.Agents.Add(agent);
             await db.SaveChangesAsync(ct);
         }
@@ -223,10 +226,10 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
 
     private async Task<Channel> EnsureChannelAsync(string name, CancellationToken ct)
     {
-        var channel = await db.Channels.FirstOrDefaultAsync(c => c.Name == name, ct);
+        var channel = await db.Channels.FirstOrDefaultAsync(c => c.OrgId == Org && c.Name == name, ct);
         if (channel is null)
         {
-            channel = new Channel { Id = Guid.NewGuid(), Name = name, CreatedAt = DateTimeOffset.UtcNow };
+            channel = new Channel { Id = Guid.NewGuid(), OrgId = Org, Name = name, CreatedAt = DateTimeOffset.UtcNow };
             db.Channels.Add(channel);
             await db.SaveChangesAsync(ct);
         }

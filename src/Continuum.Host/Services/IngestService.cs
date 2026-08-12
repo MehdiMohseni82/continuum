@@ -1,3 +1,4 @@
+using Continuum.Core.Access;
 using Continuum.Core.Contracts;
 using Continuum.Core.Data;
 using Continuum.Core.Domain;
@@ -7,8 +8,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Continuum.Host.Services;
 
 /// <summary>Upserts machine/workspace/session and inserts new events. Idempotent on (SessionId, Uuid).</summary>
-public sealed class IngestService(ContinuumDbContext db, ICurrentUser current)
+public sealed class IngestService(ContinuumDbContext db, ICurrentUser current, IAccessPolicy policy)
 {
+    private Guid Org => policy.WriteOrgId;
+
     // Postgres cannot store the NUL character in jsonb (error 22P05) or text columns. Transcripts can
     // contain it via captured terminal/binary output, so it is stripped before storage — both the raw
     // char and the six-char escape sequence. Built from char codes to avoid source-escaping pitfalls.
@@ -34,12 +37,13 @@ public sealed class IngestService(ContinuumDbContext db, ICurrentUser current)
         {
             var projectKey = group.First().ProjectKey;
 
-            var workspace = await db.Workspaces.FirstOrDefaultAsync(w => w.ProjectKey == projectKey, ct);
+            var workspace = await db.Workspaces.FirstOrDefaultAsync(w => w.OrgId == Org && w.ProjectKey == projectKey, ct);
             if (workspace is null)
             {
                 workspace = new Workspace
                 {
                     Id = Guid.NewGuid(),
+                    OrgId = Org,
                     ProjectKey = projectKey,
                     DisplayName = WorkspaceNaming.Prettify(projectKey),
                     FirstSeenAt = now,
@@ -56,6 +60,7 @@ public sealed class IngestService(ContinuumDbContext db, ICurrentUser current)
                     Id = group.Key,
                     MachineId = machine.Id,
                     WorkspaceId = workspace.Id,
+                    OrgId = Org,
                     // Attribute the session to whoever's token ingested it (the legacy token → admin).
                     OwnerId = current.UserId ?? Defaults.DefaultOwnerId,
                     StartedAt = first,

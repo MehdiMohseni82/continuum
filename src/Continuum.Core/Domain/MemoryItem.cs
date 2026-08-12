@@ -10,6 +10,9 @@ public class MemoryItem
 {
     public Guid Id { get; set; }
 
+    /// <summary>The organization this belongs to. No query crosses organizations.</summary>
+    public Guid OrgId { get; set; } = Defaults.DefaultOrgId;
+
     /// <summary>Team-ready seam.</summary>
     public Guid OwnerId { get; set; } = Defaults.DefaultOwnerId;
 
