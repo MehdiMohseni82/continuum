@@ -52,6 +52,18 @@ public interface IAccessPolicy
 
     Expression<Func<MemoryItem, bool>> ControlledMemories();
 
+    /// <summary>
+    /// Who may rename a workspace. A workspace is shared across users — the same repository ingested
+    /// from several accounts collapses into one — so unlike a session it isn't one person's to rename,
+    /// and today that means administrators only.
+    /// <para>
+    /// The owner clause is present but currently inert: ingest never stamps
+    /// <see cref="Workspace.OwnerId"/>, so every workspace carries the default owner. It becomes
+    /// meaningful when workspaces gain proper scoping.
+    /// </para>
+    /// </summary>
+    Expression<Func<Workspace, bool>> ControlledWorkspaces();
+
     /// <summary>Imperative form of <see cref="ControlledMemories"/>, for an entity already loaded.</summary>
     bool CanControl(MemoryItem memory);
 
@@ -131,6 +143,13 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
         var all = SeesEverything;
         var uid = CallerId;
         return m => all || m.OwnerId == uid;
+    }
+
+    public Expression<Func<Workspace, bool>> ControlledWorkspaces()
+    {
+        var all = SeesEverything;
+        var uid = CallerId;
+        return w => all || w.OwnerId == uid;
     }
 
     public bool CanControl(MemoryItem memory) => SeesEverything || memory.OwnerId == CallerId;

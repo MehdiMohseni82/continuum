@@ -31,6 +31,9 @@ public class AccessPolicyTests
     private static Room Room(Guid owner) =>
         new() { Id = Guid.NewGuid(), OwnerId = owner, Name = "r", Topic = "t", ChannelName = "room:x" };
 
+    private static Workspace Workspace(Guid owner) =>
+        new() { Id = Guid.NewGuid(), OwnerId = owner, ProjectKey = "k", DisplayName = "d" };
+
     // ---- sessions: read ----
 
     [Fact]
@@ -90,6 +93,27 @@ public class AccessPolicyTests
         var mine = Memory(Alice);
         var policy = For(Alice);
         Assert.Equal(policy.ControlledMemories().Compile()(mine), policy.CanControl(mine));
+    }
+
+    // ---- workspaces are shared infrastructure, not one person's property ----
+
+    [Fact]
+    public void Workspaces_AreRenameableByAdminsOnly()
+    {
+        // Ingest never stamps Workspace.OwnerId, so every workspace carries the default owner and the
+        // owner clause is inert — an ordinary user controls none of them. Pinned so that when phase 2
+        // gives workspaces real scoping, the change in behaviour is visible here rather than silent.
+        var ordinary = Workspace(Defaults.DefaultOwnerId);
+
+        Assert.False(For(Alice).ControlledWorkspaces().Compile()(ordinary));
+        Assert.True(For(Alice, admin: true).ControlledWorkspaces().Compile()(ordinary));
+    }
+
+    [Fact]
+    public void Workspaces_AreRenameableByTheirOwnerOnceOwnershipIsReal()
+    {
+        Assert.True(For(Alice).ControlledWorkspaces().Compile()(Workspace(Alice)));
+        Assert.False(For(Alice).ControlledWorkspaces().Compile()(Workspace(Bob)));
     }
 
     // ---- rooms have no shared path ----

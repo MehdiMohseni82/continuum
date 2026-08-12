@@ -40,12 +40,20 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder, IA
         return updated > 0;
     }
 
-    /// <summary>Set a workspace's friendly DisplayName. Returns false if no such workspace. Empty names are ignored.</summary>
+    /// <summary>
+    /// Set a workspace's friendly DisplayName. Returns false if no such workspace, if the name is
+    /// empty, or if the caller isn't allowed to rename it.
+    /// <para>
+    /// The HTTP endpoint also checks this, but the rule belongs here too: a service that trusts its
+    /// caller is one new call site away from being an authorization hole.
+    /// </para>
+    /// </summary>
     public async Task<bool> RenameWorkspaceAsync(Guid id, string displayName, CancellationToken ct)
     {
         var name = displayName?.Trim();
         if (string.IsNullOrEmpty(name)) return false;
         var updated = await db.Workspaces
+            .Where(policy.ControlledWorkspaces())
             .Where(w => w.Id == id)
             .ExecuteUpdateAsync(w => w.SetProperty(x => x.DisplayName, name), ct);
         return updated > 0;
