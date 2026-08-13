@@ -160,10 +160,12 @@ public static class ApiEndpoints
         api.MapGet("/handoffs", async (BusService bus, CancellationToken ct, string? status) =>
             Results.Ok(await bus.ListHandoffsAsync(status, ct)));
 
-        // --- rooms: admin-controlled group conversations (Phase 8) ---
-        api.MapPost("/rooms", async (CreateRoomRequest req, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
+        // --- rooms: group conversations, now across people (Phase 8, opened up in Phase 13) ---
+        // These were instance-admin only, which predates organizations and made a room something only
+        // one person could ever run. Authority now comes from the room itself: its owner administers
+        // it, a Contribute grant lets a colleague take part, a read grant lets them watch.
+        api.MapPost("/rooms", async (CreateRoomRequest req, RoomService rooms, CancellationToken ct) =>
         {
-            if (!me.IsAdmin) return Results.Forbid();
             if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Topic))
                 return Results.BadRequest("Name and topic are required.");
             return Results.Ok(await rooms.CreateAsync(req, ct));
@@ -182,23 +184,16 @@ public static class ApiEndpoints
             Guid id, RoomService rooms, CancellationToken ct, long since = 0, int take = 200) =>
             Results.Ok(await rooms.MessagesAsync(id, since, Math.Clamp(take, 1, 500), ct)));
 
-        api.MapPost("/rooms/{id:guid}/members", async (Guid id, AddMemberRequest req, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
-        {
-            if (!me.IsAdmin) return Results.Forbid();
-            return await rooms.AddMemberAsync(id, req.Agent.Trim(), ct) ? Results.NoContent() : Results.NotFound();
-        });
+        // Bringing an agent needs Contribute — this is how a colleague joins with their own agent.
+        api.MapPost("/rooms/{id:guid}/members", async (Guid id, AddMemberRequest req, RoomService rooms, CancellationToken ct) =>
+            await rooms.AddMemberAsync(id, req.Agent.Trim(), ct) ? Results.NoContent() : Results.NotFound());
 
-        api.MapDelete("/rooms/{id:guid}/members/{agent}", async (Guid id, string agent, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
-        {
-            if (!me.IsAdmin) return Results.Forbid();
-            return await rooms.RemoveMemberAsync(id, agent, ct) ? Results.NoContent() : Results.NotFound();
-        });
+        // The owner may remove any agent; a contributor only their own.
+        api.MapDelete("/rooms/{id:guid}/members/{agent}", async (Guid id, string agent, RoomService rooms, CancellationToken ct) =>
+            await rooms.RemoveMemberAsync(id, agent, ct) ? Results.NoContent() : Results.NotFound());
 
-        api.MapPost("/rooms/{id:guid}/close", async (Guid id, ICurrentUser me, RoomService rooms, CancellationToken ct) =>
-        {
-            if (!me.IsAdmin) return Results.Forbid();
-            return await rooms.CloseAsync(id, ct) ? Results.NoContent() : Results.NotFound();
-        });
+        api.MapPost("/rooms/{id:guid}/close", async (Guid id, RoomService rooms, CancellationToken ct) =>
+            await rooms.CloseAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
         // Agents post here (or via channel_post to the room's channel). Rejected once the room is closed.
         api.MapPost("/rooms/{id:guid}/post", async (Guid id, RoomPostRequest req, RoomService rooms, CancellationToken ct) =>
@@ -211,9 +206,12 @@ public static class ApiEndpoints
         // Have a server-side (Claude API) agent take a turn now — "push/lead" on demand. Optional steer
         // directs the message. ServerAgentDriver is only registered when a key is configured, so resolve
         // it lazily and return a clear message when the feature is off.
-        api.MapPost("/rooms/{id:guid}/lead", async (Guid id, LeadRequest? req, ICurrentUser me, ServerAgentOptions opts, IServiceProvider sp, CancellationToken ct) =>
+        api.MapPost("/rooms/{id:guid}/lead", async (
+            Guid id, LeadRequest? req, ServerAgentOptions opts, RoomService rooms, IServiceProvider sp, CancellationToken ct) =>
         {
-            if (!me.IsAdmin) return Results.Forbid();
+            // Leading spends money on the Claude API, so it stays with whoever runs the room rather
+            // than with anyone who was invited into it.
+            if (!await rooms.CanControlAsync(id, ct)) return Results.NotFound();
             if (!opts.HasKey())
                 return Results.BadRequest("Server-side Claude agent is not configured (set ServerAgents:ApiKey or the ANTHROPIC_API_KEY env var).");
 

@@ -11,7 +11,13 @@ public sealed record RoomPostRequest(string FromAgent, string Body,
 /// optional agent picks which server agent speaks (defaults to the first configured one in the room).</summary>
 public sealed record LeadRequest(string? Steer, string? Agent);
 
-public sealed record RoomMemberDto(string Agent, string? MachineName, DateTimeOffset JoinedAt);
+/// <param name="UserId">Whose agent this is — null for members enrolled before rooms crossed people.</param>
+/// <param name="User">That person's display name, for showing who brought which agent.</param>
+public sealed record RoomMemberDto(
+    string Agent, string? MachineName, DateTimeOffset JoinedAt, Guid? UserId = null, string? User = null);
+
+/// <summary>Token spend in a room attributed to one participant.</summary>
+public sealed record RoomUserTokensDto(Guid? UserId, string User, int MessageCount, long TotalTokens);
 
 public sealed record RoomDto(
     Guid Id,
@@ -32,4 +38,5 @@ public sealed record RoomDto(
 public sealed record RoomDetailDto(
     RoomDto Room,
     IReadOnlyList<RoomMemberDto> Members,
-    IReadOnlyList<MessageDto> Messages);
+    IReadOnlyList<MessageDto> Messages,
+    IReadOnlyList<RoomUserTokensDto>? TokensByUser = null);

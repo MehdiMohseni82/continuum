@@ -105,7 +105,7 @@ public sealed class BusService(ContinuumDbContext db, BusBroadcaster bus, IAcces
             .Where(m => m.ChannelId == channel.Id && m.Id > sinceId)
             .OrderBy(m => m.Id).Take(take)
             .Select(m => new MessageDto(m.Id, m.FromAgent!.Name, null, channelName, m.Body, m.CreatedAt,
-                m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheCreationTokens))
+                m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheCreationTokens, m.FromUserId, null))
             .ToListAsync(ct);
     }
 
