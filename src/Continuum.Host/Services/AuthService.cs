@@ -21,6 +21,10 @@ public sealed class AuthService(ContinuumDbContext db)
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) =>
         db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
+    /// <summary>Teams this user belongs to, used by the access policy to resolve grants made to a team.</summary>
+    public async Task<IReadOnlyList<Guid>> TeamIdsAsync(Guid userId, CancellationToken ct) =>
+        await db.TeamMembers.Where(m => m.UserId == userId).Select(m => m.TeamId).ToListAsync(ct);
+
     /// <summary>
     /// The organization a request by this user acts in. A user may belong to several; until there is a
     /// way to choose (an explicit switcher in the UI, or a header for tools), the oldest membership

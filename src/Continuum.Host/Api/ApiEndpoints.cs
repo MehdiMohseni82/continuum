@@ -269,6 +269,42 @@ public static class ApiEndpoints
             Results.Ok(await r.PurgeOlderThanAsync(olderThanDays, ct)));
 
         // --- same-origin download links for the UI (no bearer; same trust boundary as the local UI) ---
+        // --- sharing: name who, rather than only "everyone in the organization" (Phase 11) ---
+
+        api.MapGet("/teams", async (SharingService s, CancellationToken ct) =>
+            Results.Ok(await s.ListTeamsAsync(ct)));
+
+        api.MapPost("/teams", async (CreateTeamRequest req, SharingService s, CancellationToken ct) =>
+            string.IsNullOrWhiteSpace(req.Name)
+                ? Results.BadRequest("Name is required.")
+                : Results.Ok(await s.CreateTeamAsync(req.Name, ct)));
+
+        api.MapPost("/teams/{id:guid}/members", async (Guid id, TeamMemberRequest req, SharingService s, CancellationToken ct) =>
+            await s.AddTeamMemberAsync(id, req.UserId, ct) ? Results.NoContent() : Results.NotFound());
+
+        api.MapDelete("/teams/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId, SharingService s, CancellationToken ct) =>
+            await s.RemoveTeamMemberAsync(id, userId, ct) ? Results.NoContent() : Results.NotFound());
+
+        api.MapPost("/grants", async (GrantRequest req, SharingService s, CancellationToken ct) =>
+        {
+            var grant = await s.GrantAsync(req, ct);
+            // Not-found rather than forbidden: the caller may share nothing here, and saying which of
+            // "you can't" or "it doesn't exist" applies would leak whether the resource exists.
+            return grant is null ? Results.NotFound() : Results.Ok(grant);
+        });
+
+        api.MapDelete("/grants/{id:guid}", async (Guid id, SharingService s, CancellationToken ct) =>
+            await s.RevokeAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+
+        api.MapGet("/grants", async (GrantResource resourceType, Guid resourceId, SharingService s, CancellationToken ct) =>
+        {
+            var grants = await s.ListForResourceAsync(resourceType, resourceId, ct);
+            return grants is null ? Results.NotFound() : Results.Ok(grants);
+        });
+
+        api.MapGet("/grants/shared-with-me", async (SharingService s, CancellationToken ct) =>
+            Results.Ok(await s.SharedWithMeAsync(ct)));
+
         app.MapGet("/dl/{id:guid}/export.jsonl", async (Guid id, ResumeService resume, CancellationToken ct) =>
         {
             var jsonl = await resume.ExportJsonlAsync(id, ct);

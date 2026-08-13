@@ -68,6 +68,7 @@ builder.Services.AddScoped<HookContextService>();
 builder.Services.AddSingleton<BusBroadcaster>();
 builder.Services.AddScoped<BusService>();
 builder.Services.AddScoped<RoomService>();
+builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<NotificationsService>();
 
 builder.Services.Configure<MaintenanceOptions>(builder.Configuration.GetSection("Maintenance"));
@@ -96,6 +97,7 @@ builder.Services.AddScoped<Continuum.Host.Auth.CurrentUserAccessor>();
 builder.Services.AddScoped<Continuum.Host.Auth.ICurrentUser>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
 // The single source of truth for data visibility. Every service asks this instead of restating the rule.
 builder.Services.AddScoped<Continuum.Core.Access.IAccessPrincipal>(sp => sp.GetRequiredService<Continuum.Host.Auth.CurrentUserAccessor>());
+builder.Services.AddScoped<Continuum.Core.Access.IGrantSource, Continuum.Core.Access.DbGrantSource>();
 builder.Services.AddScoped<Continuum.Core.Access.IAccessPolicy, Continuum.Core.Access.AccessPolicy>();
 builder.Services.AddScoped<Continuum.Host.Auth.AuthFilter>();
 builder.Services.AddScoped<AuthService>();

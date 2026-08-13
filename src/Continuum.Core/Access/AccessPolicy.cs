@@ -20,6 +20,22 @@ public interface IAccessPrincipal
     /// Null means the caller belongs to no organization and therefore sees nothing.
     /// </summary>
     Guid? OrgId { get; }
+
+    /// <summary>
+    /// Teams the caller belongs to, resolved once per request. Held here rather than queried inside
+    /// each rule so a visibility predicate stays a single SQL statement.
+    /// </summary>
+    IReadOnlyList<Guid> TeamIds { get; }
+}
+
+/// <summary>
+/// Where the policy reads grants from. An <see cref="IQueryable{T}"/> rather than a loaded list, so
+/// against a database it composes into one EXISTS subquery instead of a second round trip — and a
+/// test can hand over an in-memory list and exercise the same rules with no database at all.
+/// </summary>
+public interface IGrantSource
+{
+    IQueryable<Grant> Grants { get; }
 }
 
 /// <summary>
@@ -114,7 +130,7 @@ public sealed record SqlArg(string Name, object Value);
 /// Today's rules, unchanged: administrators see everything, you see what you own, and everyone sees
 /// what has been shared. Organizations, grants and teams enter here and nowhere else.
 /// </summary>
-public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
+public sealed class AccessPolicy(IAccessPrincipal caller, IGrantSource grantSource) : IAccessPolicy
 {
     // Read once per call and capture as locals: EF must see constants in the expression tree, not
     // property accesses on a service it would try to translate.
@@ -132,7 +148,8 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
         var all = SeesEverything;
         var uid = CallerId;
         var org = OrgScope;
-        return s => s.OrgId == org && (all || s.OwnerId == uid || s.Shared);
+        var granted = GrantedIds(GrantResource.Session);
+        return s => s.OrgId == org && (all || s.OwnerId == uid || s.Shared || granted.Contains(s.Id));
     }
 
     public Expression<Func<Event, bool>> VisibleEvents()
@@ -140,7 +157,9 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
         var all = SeesEverything;
         var uid = CallerId;
         var org = OrgScope;
-        return e => e.Session!.OrgId == org && (all || e.Session.OwnerId == uid || e.Session.Shared);
+        var granted = GrantedIds(GrantResource.Session);
+        return e => e.Session!.OrgId == org
+                 && (all || e.Session.OwnerId == uid || e.Session.Shared || granted.Contains(e.SessionId));
     }
 
     public Expression<Func<MemoryItem, bool>> VisibleMemories()
@@ -148,7 +167,8 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
         var all = SeesEverything;
         var uid = CallerId;
         var org = OrgScope;
-        return m => m.OrgId == org && (all || m.OwnerId == uid || m.Shared);
+        var granted = GrantedIds(GrantResource.Memory);
+        return m => m.OrgId == org && (all || m.OwnerId == uid || m.Shared || granted.Contains(m.Id));
     }
 
     public Expression<Func<Room, bool>> VisibleRooms()
@@ -156,7 +176,29 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
         var all = SeesEverything;
         var uid = CallerId;
         var org = OrgScope;
-        return r => r.OrgId == org && (all || r.OwnerId == uid);
+        var granted = GrantedIds(GrantResource.Room);
+        return r => r.OrgId == org && (all || r.OwnerId == uid || granted.Contains(r.Id));
+    }
+
+    /// <summary>
+    /// Ids of one kind of resource currently granted to this caller, as a composable subquery: either
+    /// named directly or through a team they belong to, and not expired. Composed into the visibility
+    /// predicates rather than fetched, so the database answers it as one EXISTS.
+    /// </summary>
+    private IQueryable<Guid> GrantedIds(GrantResource resource)
+    {
+        var uid = CallerId;
+        var org = OrgScope;
+        var teams = caller.TeamIds;
+        var now = DateTimeOffset.UtcNow;
+
+        return grantSource.Grants
+            .Where(g => g.OrgId == org
+                     && g.ResourceType == resource
+                     && (g.ExpiresAt == null || g.ExpiresAt > now)
+                     && ((g.PrincipalType == GrantPrincipal.User && g.PrincipalId == uid)
+                      || (g.PrincipalType == GrantPrincipal.Team && teams.Contains(g.PrincipalId))))
+            .Select(g => g.ResourceId);
     }
 
     public Expression<Func<Session, bool>> ControlledSessions()
@@ -199,8 +241,26 @@ public sealed class AccessPolicy(IAccessPrincipal caller) : IAccessPolicy
 
         // Guid.Empty matches nothing, which is the correct reading of a caller with no identity.
         var uid = CallerId ?? Guid.Empty;
-        return new SqlPredicate(
-            $"({sessionAlias}.\"OrgId\" = @scopeOrgId AND ({sessionAlias}.\"OwnerId\" = @scopeOwnerId OR {sessionAlias}.\"Shared\"))",
-            [new SqlArg("scopeOrgId", org), new SqlArg("scopeOwnerId", uid)]);
+
+        // The grant clause mirrors GrantedIds. It has to: analytics runs as raw SQL, and if the two
+        // spellings of "may read" disagree, a shared session silently vanishes from the totals.
+        var sql =
+            $"({sessionAlias}.\"OrgId\" = @scopeOrgId AND (" +
+            $"{sessionAlias}.\"OwnerId\" = @scopeOwnerId OR {sessionAlias}.\"Shared\" OR EXISTS (" +
+            "SELECT 1 FROM \"Grants\" g WHERE g.\"OrgId\" = @scopeOrgId " +
+            "AND g.\"ResourceType\" = @scopeResSession " +
+            $"AND g.\"ResourceId\" = {sessionAlias}.\"Id\" " +
+            "AND (g.\"ExpiresAt\" IS NULL OR g.\"ExpiresAt\" > now()) " +
+            "AND ((g.\"PrincipalType\" = @scopePrinUser AND g.\"PrincipalId\" = @scopeOwnerId) " +
+            "OR (g.\"PrincipalType\" = @scopePrinTeam AND g.\"PrincipalId\" = ANY(@scopeTeamIds))))))";
+
+        return new SqlPredicate(sql, [
+            new SqlArg("scopeOrgId", org),
+            new SqlArg("scopeOwnerId", uid),
+            new SqlArg("scopeResSession", (int)GrantResource.Session),
+            new SqlArg("scopePrinUser", (int)GrantPrincipal.User),
+            new SqlArg("scopePrinTeam", (int)GrantPrincipal.Team),
+            new SqlArg("scopeTeamIds", caller.TeamIds.ToArray()),
+        ]);
     }
 }

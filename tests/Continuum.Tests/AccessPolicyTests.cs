@@ -13,18 +13,39 @@ public class AccessPolicyTests
     private static readonly Guid Alice = Guid.Parse("aaaaaaaa-0000-4000-8000-000000000001");
     private static readonly Guid Bob = Guid.Parse("bbbbbbbb-0000-4000-8000-000000000002");
 
+    private static readonly Guid Carol = Guid.Parse("cccccccc-0000-4000-8000-000000000003");
+    private static readonly Guid TeamX = Guid.Parse("dddddddd-0000-4000-8000-00000000000f");
+
     private static readonly Guid OrgA = Guid.Parse("11111111-0000-4000-8000-00000000000a");
     private static readonly Guid OrgB = Guid.Parse("22222222-0000-4000-8000-00000000000b");
 
-    private sealed class FakePrincipal(Guid? id, bool isAdmin, Guid? orgId) : IAccessPrincipal
+    private sealed class FakePrincipal(Guid? id, bool isAdmin, Guid? orgId, IReadOnlyList<Guid>? teams = null) : IAccessPrincipal
     {
         public Guid? UserId => id;
         public bool IsAdmin => id is not null && isAdmin;
         public Guid? OrgId => orgId;
+        public IReadOnlyList<Guid> TeamIds => teams ?? [];
     }
 
-    private static AccessPolicy For(Guid? id, bool admin = false, Guid? org = null) =>
-        new(new FakePrincipal(id, admin, org ?? OrgA));
+    /// <summary>Grants held in memory: the policy composes a query, so a list exercises the same rules.</summary>
+    private sealed class FakeGrants(params Grant[] grants) : IGrantSource
+    {
+        public IQueryable<Grant> Grants => grants.AsQueryable();
+    }
+
+    private static AccessPolicy For(Guid? id, bool admin = false, Guid? org = null,
+                                    IReadOnlyList<Guid>? teams = null, params Grant[] grants) =>
+        new(new FakePrincipal(id, admin, org ?? OrgA, teams), new FakeGrants(grants));
+
+    private static Grant GrantTo(GrantResource type, Guid resourceId, GrantPrincipal principalType, Guid principalId,
+                                 Guid? org = null, DateTimeOffset? expiresAt = null) =>
+        new()
+        {
+            Id = Guid.NewGuid(), OrgId = org ?? OrgA,
+            ResourceType = type, ResourceId = resourceId,
+            PrincipalType = principalType, PrincipalId = principalId,
+            Access = GrantAccess.Read, CreatedAt = DateTimeOffset.UtcNow, ExpiresAt = expiresAt,
+        };
 
     private static Session Session(Guid owner, bool shared = false, Guid? org = null) =>
         new() { Id = Guid.NewGuid(), OrgId = org ?? OrgA, OwnerId = owner, Shared = shared };
@@ -83,7 +104,7 @@ public class AccessPolicyTests
     public void ACallerWithNoOrganizationSeesNothing()
     {
         // Null must read as "no organization", not "every organization".
-        var stranded = new AccessPolicy(new FakePrincipal(Alice, isAdmin: true, orgId: null));
+        var stranded = new AccessPolicy(new FakePrincipal(Alice, isAdmin: true, orgId: null), new FakeGrants());
 
         Assert.False(stranded.VisibleSessions().Compile()(Session(Alice, org: OrgA)));
         Assert.False(stranded.VisibleMemories().Compile()(Memory(Alice, shared: true, org: OrgA)));
@@ -100,7 +121,7 @@ public class AccessPolicyTests
     public void AMemberlessCallerWritesIntoThePreTenancyOrganization()
     {
         // The upgrade fallback: reachable only before memberships exist, never a cross-tenant write.
-        var stranded = new AccessPolicy(new FakePrincipal(Alice, isAdmin: false, orgId: null));
+        var stranded = new AccessPolicy(new FakePrincipal(Alice, isAdmin: false, orgId: null), new FakeGrants());
         Assert.Equal(Defaults.DefaultOrgId, stranded.WriteOrgId);
     }
 
@@ -193,6 +214,97 @@ public class AccessPolicyTests
         Assert.True(For(Alice).VisibleRooms().Compile()(Room(Alice)));
         Assert.False(For(Alice).VisibleRooms().Compile()(Room(Bob)));
         Assert.True(For(Bob, admin: true).VisibleRooms().Compile()(Room(Alice)));
+    }
+
+    // ---- grants: sharing with named people and teams ----
+
+    [Fact]
+    public void AGrantToMeMakesAPrivateSessionVisible()
+    {
+        var theirs = Session(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.User, Alice));
+
+        Assert.True(policy.VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AGrantToSomeoneElseDoesNotMakeItVisibleToMe()
+    {
+        var theirs = Session(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.User, Carol));
+
+        Assert.False(policy.VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AGrantToATeamIAmInMakesItVisible()
+    {
+        var theirs = Session(Bob);
+        var policy = For(Alice, teams: [TeamX], grants: GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.Team, TeamX));
+
+        Assert.True(policy.VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AGrantToATeamIAmNotInDoesNothing()
+    {
+        var theirs = Session(Bob);
+        var policy = For(Alice, teams: [], grants: GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.Team, TeamX));
+
+        Assert.False(policy.VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AnExpiredGrantConfersNothing()
+    {
+        var theirs = Session(Bob);
+        var expired = GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.User, Alice,
+                              expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        Assert.False(For(Alice, grants: expired).VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AGrantFromAnotherOrganizationConfersNothing()
+    {
+        // Belt and braces: the resource is out of reach anyway, but a stray grant row must not help.
+        var theirs = Session(Bob, org: OrgB);
+        var policy = For(Alice, org: OrgA,
+                         grants: GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.User, Alice, org: OrgB));
+
+        Assert.False(policy.VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AGrantOfTheWrongKindDoesNotLeakAcrossResourceTypes()
+    {
+        var theirs = Session(Bob);
+        // A memory grant that happens to carry the same id must not unlock the session.
+        var policy = For(Alice, grants: GrantTo(GrantResource.Memory, theirs.Id, GrantPrincipal.User, Alice));
+
+        Assert.False(policy.VisibleSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AGrantConfersReadingButNeverControl()
+    {
+        var theirs = Session(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Session, theirs.Id, GrantPrincipal.User, Alice));
+
+        Assert.True(policy.VisibleSessions().Compile()(theirs));
+        Assert.False(policy.ControlledSessions().Compile()(theirs));
+    }
+
+    [Fact]
+    public void GrantsWorkForMemoriesAndRoomsToo()
+    {
+        var mem = Memory(Bob);
+        var room = Room(Bob);
+
+        Assert.True(For(Alice, grants: GrantTo(GrantResource.Memory, mem.Id, GrantPrincipal.User, Alice))
+            .VisibleMemories().Compile()(mem));
+        Assert.True(For(Alice, grants: GrantTo(GrantResource.Room, room.Id, GrantPrincipal.User, Alice))
+            .VisibleRooms().Compile()(room));
     }
 
     // ---- raw SQL ----
