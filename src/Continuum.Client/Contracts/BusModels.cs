@@ -10,7 +10,8 @@ public sealed record ChannelPostRequest(string FromAgent, string Channel, string
 
 public sealed record MessageDto(
     long Id, string FromAgent, string? ToAgent, string? Channel, string Body, DateTimeOffset CreatedAt,
-    int? InputTokens = null, int? OutputTokens = null, int? CacheReadTokens = null, int? CacheCreationTokens = null);
+    int? InputTokens = null, int? OutputTokens = null, int? CacheReadTokens = null, int? CacheCreationTokens = null,
+    Guid? FromUserId = null, string? FromUser = null);
 
 public sealed record HandoffRequest(string FromAgent, string Title, string Task, string? ContextRef, Guid? WorkspaceId);
 public sealed record ClaimHandoffRequest(string ByAgent);

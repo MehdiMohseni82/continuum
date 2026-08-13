@@ -8,6 +8,14 @@ public class AgentMessage
     public Guid FromAgentId { get; set; }
     public Agent? FromAgent { get; set; }
 
+    /// <summary>
+    /// The person whose agent posted this. An agent belongs to someone, and once a room holds several
+    /// people's agents, "who said this" is a question about people, not only about agent names — it is
+    /// also what lets token spend be attributed per person. Null for messages posted before this
+    /// existed, or by a server-side agent that belongs to no one.
+    /// </summary>
+    public Guid? FromUserId { get; set; }
+
     /// <summary>Set for a direct message.</summary>
     public Guid? ToAgentId { get; set; }
 

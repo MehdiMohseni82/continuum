@@ -54,5 +54,12 @@ public class RoomMember
     public Guid AgentId { get; set; }
     public Agent? Agent { get; set; }
 
+    /// <summary>
+    /// Whose agent this is. A room used to hold one person's agents, so this was implicit; with
+    /// colleagues in the room it is what distinguishes your participant from theirs. Null for members
+    /// added before this existed.
+    /// </summary>
+    public Guid? UserId { get; set; }
+
     public DateTimeOffset JoinedAt { get; set; }
 }

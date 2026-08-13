@@ -167,6 +167,7 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
         {
             e.HasKey(m => m.Id);
             e.HasIndex(m => new { m.ToAgentId, m.Read });
+            e.HasIndex(m => m.FromUserId);
             e.HasIndex(m => new { m.ChannelId, m.Id });
             e.HasOne(m => m.FromAgent).WithMany().HasForeignKey(m => m.FromAgentId);
         });
@@ -219,6 +220,7 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
         {
             e.HasKey(m => m.Id);
             e.HasIndex(m => new { m.RoomId, m.AgentId }).IsUnique();
+            e.HasIndex(m => m.UserId);
             e.HasOne(m => m.Room).WithMany(r => r.Members).HasForeignKey(m => m.RoomId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(m => m.Agent).WithMany().HasForeignKey(m => m.AgentId);
         });

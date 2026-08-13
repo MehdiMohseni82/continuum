@@ -149,8 +149,7 @@ public sealed class SharingService(ContinuumDbContext db, ICurrentUser current, 
     {
         GrantResource.Session => db.Sessions.Where(policy.ControlledSessions()).AnyAsync(s => s.Id == id, ct),
         GrantResource.Memory => db.Memories.Where(policy.ControlledMemories()).AnyAsync(m => m.Id == id, ct),
-        // Rooms have no separate control rule: seeing one means owning it or administering the org.
-        GrantResource.Room => db.Rooms.Where(policy.VisibleRooms()).AnyAsync(r => r.Id == id, ct),
+        GrantResource.Room => db.Rooms.Where(policy.ControlledRooms()).AnyAsync(r => r.Id == id, ct),
         _ => Task.FromResult(false),
     };
 

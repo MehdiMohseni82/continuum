@@ -38,13 +38,14 @@ public class AccessPolicyTests
         new(new FakePrincipal(id, admin, org ?? OrgA, teams), new FakeGrants(grants));
 
     private static Grant GrantTo(GrantResource type, Guid resourceId, GrantPrincipal principalType, Guid principalId,
-                                 Guid? org = null, DateTimeOffset? expiresAt = null) =>
+                                 Guid? org = null, DateTimeOffset? expiresAt = null,
+                                 GrantAccess access = GrantAccess.Read) =>
         new()
         {
             Id = Guid.NewGuid(), OrgId = org ?? OrgA,
             ResourceType = type, ResourceId = resourceId,
             PrincipalType = principalType, PrincipalId = principalId,
-            Access = GrantAccess.Read, CreatedAt = DateTimeOffset.UtcNow, ExpiresAt = expiresAt,
+            Access = access, CreatedAt = DateTimeOffset.UtcNow, ExpiresAt = expiresAt,
         };
 
     private static Session Session(Guid owner, bool shared = false, Guid? org = null) =>
@@ -305,6 +306,86 @@ public class AccessPolicyTests
             .VisibleMemories().Compile()(mem));
         Assert.True(For(Alice, grants: GrantTo(GrantResource.Room, room.Id, GrantPrincipal.User, Alice))
             .VisibleRooms().Compile()(room));
+    }
+
+    // ---- cross-user rooms: watching, taking part, and running are three different things ----
+
+    [Fact]
+    public void AReadGrantLetsAColleagueWatchARoomButNotPostInIt()
+    {
+        var theirs = Room(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Room, theirs.Id, GrantPrincipal.User, Alice,
+                                                access: GrantAccess.Read));
+
+        Assert.True(policy.VisibleRooms().Compile()(theirs));
+        Assert.False(policy.ContributableRooms().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AContributeGrantLetsThemTakePart()
+    {
+        var theirs = Room(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Room, theirs.Id, GrantPrincipal.User, Alice,
+                                                access: GrantAccess.Contribute));
+
+        Assert.True(policy.VisibleRooms().Compile()(theirs));
+        Assert.True(policy.ContributableRooms().Compile()(theirs));
+    }
+
+    [Fact]
+    public void AContributeGrantToMyTeamLetsMeTakePart()
+    {
+        var theirs = Room(Bob);
+        var policy = For(Alice, teams: [TeamX],
+                         grants: GrantTo(GrantResource.Room, theirs.Id, GrantPrincipal.Team, TeamX,
+                                         access: GrantAccess.Contribute));
+
+        Assert.True(policy.ContributableRooms().Compile()(theirs));
+    }
+
+    [Fact]
+    public void NoGrantEverConfersControlOfARoom()
+    {
+        // Being invited into someone's room must not let you close it, evict their agents, or pass it on.
+        var theirs = Room(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Room, theirs.Id, GrantPrincipal.User, Alice,
+                                                access: GrantAccess.Contribute));
+
+        Assert.True(policy.ContributableRooms().Compile()(theirs));
+        Assert.False(policy.ControlledRooms().Compile()(theirs));
+    }
+
+    [Fact]
+    public void TheOwnerCanDoAllThreeToTheirOwnRoom()
+    {
+        var mine = Room(Alice);
+        var policy = For(Alice);
+
+        Assert.True(policy.VisibleRooms().Compile()(mine));
+        Assert.True(policy.ContributableRooms().Compile()(mine));
+        Assert.True(policy.ControlledRooms().Compile()(mine));
+    }
+
+    [Fact]
+    public void AnExpiredContributeGrantStopsLettingThemPost()
+    {
+        var theirs = Room(Bob);
+        var policy = For(Alice, grants: GrantTo(GrantResource.Room, theirs.Id, GrantPrincipal.User, Alice,
+                                                expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                                                access: GrantAccess.Contribute));
+
+        Assert.False(policy.ContributableRooms().Compile()(theirs));
+    }
+
+    [Fact]
+    public void RoomParticipationDoesNotCrossOrganizations()
+    {
+        var theirs = Room(Bob, org: OrgB);
+        var policy = For(Alice, org: OrgA,
+                         grants: GrantTo(GrantResource.Room, theirs.Id, GrantPrincipal.User, Alice,
+                                         org: OrgB, access: GrantAccess.Contribute));
+
+        Assert.False(policy.ContributableRooms().Compile()(theirs));
     }
 
     // ---- raw SQL ----

@@ -66,8 +66,21 @@ public interface IAccessPolicy
 
     Expression<Func<MemoryItem, bool>> VisibleMemories();
 
-    /// <summary>Rooms have no shared flag today — only the owner (and admins) see them.</summary>
+    /// <summary>Rooms have no shared flag: the owner, administrators, and anyone granted access.</summary>
     Expression<Func<Room, bool>> VisibleRooms();
+
+    /// <summary>
+    /// Rooms the caller may post into. Watching a room and taking part in it are different things, so
+    /// a read grant lets a colleague follow the conversation without being able to join it — only a
+    /// Contribute grant (or owning the room) does that.
+    /// </summary>
+    Expression<Func<Room, bool>> ContributableRooms();
+
+    /// <summary>
+    /// Rooms the caller may administer: add or remove members, close it, share it. Grants never confer
+    /// this, however generous — sharing a room does not hand over control of it.
+    /// </summary>
+    Expression<Func<Room, bool>> ControlledRooms();
 
     // ---- control: may change, delete, or re-share ----
 
@@ -185,7 +198,11 @@ public sealed class AccessPolicy(IAccessPrincipal caller, IGrantSource grantSour
     /// named directly or through a team they belong to, and not expired. Composed into the visibility
     /// predicates rather than fetched, so the database answers it as one EXISTS.
     /// </summary>
-    private IQueryable<Guid> GrantedIds(GrantResource resource)
+    /// <param name="atLeast">
+    /// Minimum access the grant must confer. Contribute is the higher level, so asking for it excludes
+    /// read-only grants; asking for Read accepts either.
+    /// </param>
+    private IQueryable<Guid> GrantedIds(GrantResource resource, GrantAccess atLeast = GrantAccess.Read)
     {
         var uid = CallerId;
         var org = OrgScope;
@@ -195,10 +212,28 @@ public sealed class AccessPolicy(IAccessPrincipal caller, IGrantSource grantSour
         return grantSource.Grants
             .Where(g => g.OrgId == org
                      && g.ResourceType == resource
+                     && g.Access >= atLeast
                      && (g.ExpiresAt == null || g.ExpiresAt > now)
                      && ((g.PrincipalType == GrantPrincipal.User && g.PrincipalId == uid)
                       || (g.PrincipalType == GrantPrincipal.Team && teams.Contains(g.PrincipalId))))
             .Select(g => g.ResourceId);
+    }
+
+    public Expression<Func<Room, bool>> ContributableRooms()
+    {
+        var all = SeesEverything;
+        var uid = CallerId;
+        var org = OrgScope;
+        var granted = GrantedIds(GrantResource.Room, GrantAccess.Contribute);
+        return r => r.OrgId == org && (all || r.OwnerId == uid || granted.Contains(r.Id));
+    }
+
+    public Expression<Func<Room, bool>> ControlledRooms()
+    {
+        var all = SeesEverything;
+        var uid = CallerId;
+        var org = OrgScope;
+        return r => r.OrgId == org && (all || r.OwnerId == uid);
     }
 
     public Expression<Func<Session, bool>> ControlledSessions()
