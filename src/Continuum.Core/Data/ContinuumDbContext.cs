@@ -22,6 +22,9 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
     public DbSet<RoomMember> RoomMembers => Set<RoomMember>();
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<OrgMembership> OrgMemberships => Set<OrgMembership>();
+    public DbSet<Grant> Grants => Set<Grant>();
+    public DbSet<Team> Teams => Set<Team>();
+    public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -48,6 +51,31 @@ public class ContinuumDbContext(DbContextOptions<ContinuumDbContext> options) : 
             e.HasIndex(m => new { m.OrgId, m.UserId }).IsUnique();
             e.HasIndex(m => m.UserId);
             e.HasOne(m => m.Organization).WithMany(o => o.Members).HasForeignKey(m => m.OrgId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Grant>(e =>
+        {
+            e.HasKey(g => g.Id);
+            // The shape every visibility query probes: which rows of this kind are granted to me.
+            e.HasIndex(g => new { g.OrgId, g.ResourceType, g.ResourceId });
+            e.HasIndex(g => new { g.OrgId, g.PrincipalType, g.PrincipalId });
+            e.HasIndex(g => new { g.ResourceType, g.ResourceId, g.PrincipalType, g.PrincipalId }).IsUnique();
+        });
+
+        b.Entity<Team>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.HasIndex(t => new { t.OrgId, t.Name }).IsUnique();
+            e.Property(t => t.Name).HasMaxLength(128);
+        });
+
+        b.Entity<TeamMember>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => new { m.TeamId, m.UserId }).IsUnique();
+            e.HasIndex(m => m.UserId);
+            e.HasOne(m => m.Team).WithMany(t => t.Members).HasForeignKey(m => m.TeamId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

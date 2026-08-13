@@ -50,7 +50,9 @@ public sealed class AuthFilter(
 
     /// <summary>Resolve which organization the request acts in, then fill the principal.</summary>
     private async Task SetAsync(CurrentUserAccessor cur, User user, bool legacy, CancellationToken ct) =>
-        cur.Set(user, legacy, await auth.PrimaryOrgIdAsync(user.Id, ct));
+        cur.Set(user, legacy,
+            await auth.PrimaryOrgIdAsync(user.Id, ct),
+            await auth.TeamIdsAsync(user.Id, ct));
 
     private async Task<bool> ResolveBearerAsync(HttpContext http, CurrentUserAccessor cur)
     {
@@ -69,7 +71,9 @@ public sealed class AuthFilter(
             var admin = await auth.FindByIdAsync(Defaults.DefaultOwnerId, http.RequestAborted)
                         ?? new User { Id = Defaults.DefaultOwnerId, Email = "admin@continuum.local", DisplayName = "Admin", PasswordHash = "", Role = UserRole.Admin };
             // The legacy token predates organizations, so it acts in the one that holds pre-tenancy data.
-            cur.Set(admin, legacy: true, await auth.PrimaryOrgIdAsync(admin.Id, http.RequestAborted) ?? Defaults.DefaultOrgId);
+            cur.Set(admin, legacy: true,
+                await auth.PrimaryOrgIdAsync(admin.Id, http.RequestAborted) ?? Defaults.DefaultOrgId,
+                await auth.TeamIdsAsync(admin.Id, http.RequestAborted));
             return true;
         }
 

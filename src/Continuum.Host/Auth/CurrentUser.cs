@@ -21,6 +21,7 @@ public sealed class CurrentUserAccessor : ICurrentUser
     public UserRole Role { get; private set; } = UserRole.Member;
     public bool IsLegacy { get; private set; }
     public Guid? OrgId { get; private set; }
+    public IReadOnlyList<Guid> TeamIds { get; private set; } = [];
 
     public bool IsAuthenticated => UserId is not null;
     public bool IsAdmin => IsAuthenticated && Role == UserRole.Admin;
@@ -29,12 +30,13 @@ public sealed class CurrentUserAccessor : ICurrentUser
     /// The organization this request acts in — the caller's membership. Null when they belong to none,
     /// which the access policy reads as "sees nothing" rather than "sees everything".
     /// </param>
-    public void Set(User user, bool legacy, Guid? orgId)
+    public void Set(User user, bool legacy, Guid? orgId, IReadOnlyList<Guid>? teamIds = null)
     {
         UserId = user.Id;
         Email = user.Email;
         Role = user.Role;
         IsLegacy = legacy;
         OrgId = orgId;
+        TeamIds = teamIds ?? [];
     }
 }
