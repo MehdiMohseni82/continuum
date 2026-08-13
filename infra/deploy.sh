@@ -19,7 +19,7 @@ REF="${1:-origin/main}"
 SERVER="${CONTINUUM_SERVER:-root@152.53.226.44}"
 SSH_KEY="${CONTINUUM_SSH_KEY:-$HOME/.ssh/private_key_no_pass}"
 REMOTE_DIR="${CONTINUUM_DIR:-/opt/continuum}"
-COMPOSE="docker compose -f docker-compose.server.yml -p continuum"
+
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
@@ -41,9 +41,13 @@ git archive --format=tar.gz -o "$archive" "$REF"
 echo "Built archive ($(du -h "$archive" | cut -f1)) — uploading..."
 scp -q -i "$SSH_KEY" -o ConnectTimeout=20 "$archive" "$SERVER:/tmp/continuum-deploy.tar.gz"
 
-# The remote half runs as one script so a failure can't leave the tree half-replaced.
-ssh -i "$SSH_KEY" -o ConnectTimeout=20 "$SERVER" REMOTE_DIR="$REMOTE_DIR" COMPOSE="$COMPOSE" 'bash -s' <<'REMOTE'
+# The remote half runs as one script so a failure can't leave the tree half-replaced. The target
+# directory arrives as a positional argument: ssh joins its arguments into one command string, so
+# `VAR=value ssh-command` would be re-parsed by the remote shell rather than set as an environment.
+ssh -i "$SSH_KEY" -o ConnectTimeout=20 "$SERVER" "bash -s -- $(printf %q "$REMOTE_DIR")" <<'REMOTE'
 set -euo pipefail
+REMOTE_DIR="$1"
+COMPOSE=(docker compose -f docker-compose.server.yml -p continuum)
 cd "$REMOTE_DIR"
 
 # Refuse to wipe a directory that isn't a Continuum checkout.
@@ -74,7 +78,7 @@ fi
 
 echo "  tree replaced; rebuilding..."
 cd infra
-$COMPOSE up -d --build
+"${COMPOSE[@]}" up -d --build
 REMOTE
 
 echo
