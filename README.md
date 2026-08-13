@@ -56,6 +56,17 @@ To use a different Ollama model, set `EMBEDDING_MODEL` **and** make sure its wid
 `EmbeddingConfig.Dimensions` (currently 768) — pgvector columns are fixed-dimension, so a
 different width needs that constant + a migration for `Memories.Embedding` updated together.
 
+## Deploy
+
+```bash
+infra/deploy.sh              # deploy origin/main
+infra/deploy.sh <git-ref>    # deploy something else
+```
+
+Replaces the tracked tree on the server (so files deleted upstream actually go away), carries
+`infra/.env` across, and rebuilds. Migrations apply on host boot. Override the target with
+`CONTINUUM_SERVER`, `CONTINUUM_SSH_KEY`, `CONTINUUM_DIR`.
+
 ## Run it (Docker)
 
 ```bash
