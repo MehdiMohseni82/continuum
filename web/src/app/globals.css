@@ -2,9 +2,73 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ---------------------------------------------------------------------------
+   Beautiful UI (beautifului.dev) design tokens.
+
+   Two things carry this system's character and both are worth preserving exactly:
+   every elevation begins with a 0 0 0 1px hairline ring before any blur, and radii
+   are named by the role they serve rather than by size. Values are taken from the
+   reference's own stylesheet, not approximated.
+   --------------------------------------------------------------------------- */
+:root {
+  --bui-surface: #fff;
+  --bui-stripe: #f5f5f5;
+  --bui-line: #ecedef;
+  --bui-line-strong: #e0e2e5;
+  --bui-accent: #0285ff;
+  --bui-accent-ink: #0170dd;
+  --bui-accent-tint: #e9f3ff;
+
+  --bui-shadow-hairline: 0 0 0 1px var(--bui-line);
+  --bui-shadow-btn: 0 0 0 1px var(--bui-line-strong), 0 1px 2px #1018280d;
+  --bui-shadow-card: 0 0 0 1px var(--bui-line), 0 1px 2px #1018280a, 0 2px 6px #10182808;
+  --bui-shadow-raised: 0 0 0 1px var(--bui-line), 0 2px 10px #0000000b;
+  --bui-shadow-overlay: 0 0 0 1px var(--bui-line), 0 8px 28px #0001;
+  --bui-shadow-inset-field: inset 0 1px 2px #0000001f;
+}
+
+.dark {
+  --bui-surface: #232427;
+  --bui-stripe: #1b1c1e;
+  --bui-line: #2e3033;
+  --bui-line-strong: #3a3c40;
+  --bui-accent: #3d9aff;
+  --bui-accent-ink: #7ec0ff;
+  --bui-accent-tint: #3d9aff29;
+
+  --bui-shadow-btn: 0 0 0 1px var(--bui-line-strong), 0 1px 2px #0000004d;
+  --bui-shadow-card: 0 0 0 1px var(--bui-line), 0 1px 2px #0003, 0 2px 6px #0003;
+  --bui-shadow-raised: 0 0 0 1px var(--bui-line), 0 2px 10px #00000038;
+  --bui-shadow-overlay: 0 0 0 1px var(--bui-line-strong), 0 8px 28px #00000057;
+  --bui-shadow-inset-field: inset 0 1px 2px #0006;
+}
+
+@theme inline {
+  --color-surface: var(--bui-surface);
+  --color-stripe: var(--bui-stripe);
+  --color-line: var(--bui-line);
+  --color-line-strong: var(--bui-line-strong);
+  --color-accent: var(--bui-accent);
+  --color-accent-ink: var(--bui-accent-ink);
+  --color-accent-tint: var(--bui-accent-tint);
+
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 10px;
+
+  --shadow-hairline: var(--bui-shadow-hairline);
+  --shadow-btn: var(--bui-shadow-btn);
+  --shadow-card: var(--bui-shadow-card);
+  --shadow-raised: var(--bui-shadow-raised);
+  --shadow-overlay: var(--bui-shadow-overlay);
+  --shadow-inset-field: var(--bui-shadow-inset-field);
+}
+
+
 @theme {
   --font-*: initial;
-  --font-outfit: Outfit, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
   --breakpoint-*: initial;
   --breakpoint-2xsm: 375px;
@@ -38,18 +102,18 @@
   --color-white: #ffffff;
   --color-black: #101828;
 
-  --color-brand-25: #f2f7ff;
-  --color-brand-50: #ecf3ff;
-  --color-brand-100: #dde9ff;
-  --color-brand-200: #c2d6ff;
-  --color-brand-300: #9cb9ff;
-  --color-brand-400: #7592ff;
-  --color-brand-500: #465fff;
-  --color-brand-600: #3641f5;
-  --color-brand-700: #2a31d8;
-  --color-brand-800: #252dae;
-  --color-brand-900: #262e89;
-  --color-brand-950: #161950;
+  --color-brand-25: #f2f8ff;
+  --color-brand-50: #e9f3ff;
+  --color-brand-100: #d3e8ff;
+  --color-brand-200: #aed6ff;
+  --color-brand-300: #7ec0ff;
+  --color-brand-400: #3d9aff;
+  --color-brand-500: #0285ff;
+  --color-brand-600: #0170dd;
+  --color-brand-700: #015cb4;
+  --color-brand-800: #024b91;
+  --color-brand-900: #073f76;
+  --color-brand-950: #052747;
 
   --color-blue-light-25: #f5fbff;
   --color-blue-light-50: #f0f9ff;
@@ -190,7 +254,7 @@
   }
 
   body {
-    @apply relative font-normal font-outfit z-1 bg-gray-50;
+    @apply relative font-normal font-sans z-1 bg-stripe;
   }
 }
 
