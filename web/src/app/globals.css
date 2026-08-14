@@ -897,14 +897,14 @@ span.flatpickr-weekday,
 .flatpickr-day.selected.nextMonthDay,
 .flatpickr-day.startRange.nextMonthDay,
 .flatpickr-day.endRange.nextMonthDay {
-  background: #465fff;
+  background: var(--color-brand-500);
   @apply !border-brand-500 !bg-brand-500 hover:!border-brand-500 hover:!bg-brand-500;
 }
 
 .flatpickr-day.selected.startRange + .endRange:not(:nth-child(7n + 1)),
 .flatpickr-day.startRange.startRange + .endRange:not(:nth-child(7n + 1)),
 .flatpickr-day.endRange.startRange + .endRange:not(:nth-child(7n + 1)) {
-  box-shadow: -10px 0 0 #465fff;
+  box-shadow: -10px 0 0 var(--color-brand-500);
 }
 
 .flatpickr-months .flatpickr-prev-month svg,
@@ -1079,7 +1079,7 @@ pre[class*="language-"].line-numbers {
   fill: #9cb9ff !important;
 }
 #mapTwo .jvectormap-region[data-code="US"] {
-  fill: #465fff !important;
+  fill: var(--color-brand-500) !important;
 }
 
 .api-token-chart .apexcharts-tooltip {
@@ -1095,10 +1095,10 @@ pre[class*="language-"].line-numbers {
   stroke-width: 2 !important;
 }
 #mapCustomerPinPoint .jvectormap-region[data-code="US-CA"] {
-  fill: #465fff !important;
+  fill: var(--color-brand-500) !important;
 }
 #mapCustomerPinPoint .jvectormap-region[data-code="US-NV"] {
-  fill: #465fff !important;
+  fill: var(--color-brand-500) !important;
 }
 #mapCustomerPinPoint .jvectormap-region[data-code="US-NY"] {
   fill: #3538cd !important;
@@ -1137,7 +1137,7 @@ pre[class*="language-"].line-numbers {
   fill: #9cb9ff !important;
 }
 #mapCustomerPinPoint .jvectormap-region.jvectormap-element:hover {
-  fill: #465fff !important;
+  fill: var(--color-brand-500) !important;
 }
 .dark #mapCustomerPinPoint .jvectormap-region.jvectormap-element {
   stroke: #1f2937 !important;
@@ -1145,7 +1145,7 @@ pre[class*="language-"].line-numbers {
 
 /* Customer map markers: solid filled circles with white ring */
 #mapCustomerPinPoint .jvectormap-marker.jvectormap-element {
-  fill: #465fff !important;
+  fill: var(--color-brand-500) !important;
   stroke: white !important;
   stroke-width: 2 !important;
   fill-opacity: 1 !important;
@@ -1165,7 +1165,7 @@ pre[class*="language-"].line-numbers {
   height: 20px;
   border-radius: 9999px;
   background: #ffffff;
-  border: 2px solid #465fff;
+  border: 2px solid var(--color-brand-500);
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
@@ -1174,7 +1174,7 @@ pre[class*="language-"].line-numbers {
   height: 20px;
   border-radius: 9999px;
   background: #ffffff;
-  border: 2px solid #465fff;
+  border: 2px solid var(--color-brand-500);
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }

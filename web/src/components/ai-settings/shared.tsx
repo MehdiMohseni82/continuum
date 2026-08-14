@@ -356,7 +356,7 @@ export function RangeControl({
         onChange={(event) => onChange(Number(event.target.value))}
         className="ai-settings-range w-full"
         style={{
-          background: `linear-gradient(to right, #465fff 0%, #465fff ${value}%, #e5e7eb ${value}%, #e5e7eb 100%)`,
+          background: `linear-gradient(to right, #0285ff 0%, #0285ff ${value}%, #e5e7eb ${value}%, #e5e7eb 100%)`,
         }}
       />
       <span className="w-10 shrink-0 text-right text-sm text-gray-700 dark:text-gray-400">
