@@ -1,15 +1,27 @@
 import Link from "next/link";
 import { capi, SessionSummary, SessionStatus } from "@/lib/continuum";
+import { Card, Chip, TAG, tagFor } from "@/components/bui";
 
 export const metadata = { title: "Continuum — History" };
 export const dynamic = "force-dynamic";
 
-const statusColor: Record<SessionStatus, string> = {
-  Live: "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400",
-  Ended: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
-  Interrupted: "bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400",
-  Unknown: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+// Status is a state, so it takes a semantic colour rather than one from the categorical palette.
+const STATUS_DOT: Record<SessionStatus, string> = {
+  Live: TAG.green,
+  Ended: "#9ca3af",
+  Interrupted: TAG.red,
+  Unknown: "#9ca3af",
 };
+
+/** "3h ago" reads faster down a column than a full locale timestamp. */
+function ago(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return days < 30 ? `${days}d ago` : new Date(iso).toLocaleDateString();
+}
 
 export default async function SessionsPage({
   searchParams,
@@ -21,69 +33,77 @@ export default async function SessionsPage({
   const sessions = await capi<SessionSummary[]>(`/api/sessions${query}`);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white/90">History</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Every session, across every machine.</p>
+          <h2 className="text-2xl font-semibold tracking-[-0.01em] text-gray-800 dark:text-white/90">History</h2>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Every session, across every machine.
+          </p>
         </div>
         <form action="/sessions" className="flex gap-2">
           <input
             name="q"
             defaultValue={q ?? ""}
             placeholder="Filter by title…"
-            className="h-10 w-64 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+            className="w-56 rounded-control bg-stripe px-3 py-1.5 text-sm text-gray-800 shadow-inset-field placeholder:text-gray-400 focus:outline-none focus:shadow-[0_0_0_1px_var(--bui-accent)] dark:text-white/90"
           />
-          <button className="h-10 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600">
+          <button className="rounded-control bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-ink">
             Filter
           </button>
         </form>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <Card padded={false} className="overflow-hidden">
         <div className="max-w-full overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-400 dark:border-gray-800">
-                <th className="px-5 py-3 font-medium">Title</th>
-                <th className="px-5 py-3 font-medium">Project</th>
-                <th className="px-5 py-3 font-medium">Machine</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Last activity</th>
-                <th className="px-5 py-3 text-right font-medium">Events</th>
+              <tr className="border-b border-line text-left">
+                {["Title", "Project", "Machine", "Status", "Last activity"].map((h) => (
+                  <th key={h} className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.09em] text-gray-400">
+                    {h}
+                  </th>
+                ))}
+                <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.09em] text-gray-400">
+                  Events
+                </th>
               </tr>
             </thead>
             <tbody>
               {sessions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-gray-400">
-                    No sessions.
+                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                    No sessions yet.
                   </td>
                 </tr>
               ) : (
                 sessions.map((s) => (
-                  <tr key={s.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 dark:border-gray-800/60 dark:hover:bg-white/[0.02]">
-                    <td className="px-5 py-3">
-                      <Link href={`/sessions/${s.id}`} className="font-medium text-brand-500 hover:underline">
+                  <tr key={s.id} className="border-b border-line last:border-0 hover:bg-stripe">
+                    <td className="px-4 py-2.5">
+                      <Link
+                        href={`/sessions/${s.id}`}
+                        className="font-medium text-gray-800 hover:text-accent-ink dark:text-white/90"
+                      >
                         {s.title || "(untitled)"}
                       </Link>
                     </td>
-                    <td className="px-5 py-3 text-gray-600 dark:text-gray-300">{s.workspace}</td>
-                    <td className="px-5 py-3 text-gray-600 dark:text-gray-300">{s.machine}</td>
-                    <td className="px-5 py-3">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColor[s.status]}`}>{s.status}</span>
+                    {/* A stable hue per project and machine, so the eye groups rows without reading them. */}
+                    <td className="px-4 py-2.5"><Chip dot={tagFor(s.workspace)}>{s.workspace}</Chip></td>
+                    <td className="px-4 py-2.5"><Chip dot={tagFor(s.machine)}>{s.machine}</Chip></td>
+                    <td className="px-4 py-2.5"><Chip dot={STATUS_DOT[s.status]}>{s.status}</Chip></td>
+                    <td className="px-4 py-2.5 font-mono text-[12px] text-gray-500 dark:text-gray-400">
+                      {ago(s.lastEventAt)}
                     </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
-                      {new Date(s.lastEventAt).toLocaleString()}
+                    <td className="px-4 py-2.5 text-right font-mono text-[12px] tabular-nums text-gray-600 dark:text-gray-300">
+                      {s.messageCount}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-gray-700 dark:text-gray-200">{s.messageCount}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -15,30 +15,12 @@ export default function AdminLayout({
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
   const pathname = usePathname();
 
-  // Route-specific styles for the main content container
-  const getRouteSpecificStyles = () => {
-    switch (pathname) {
-      case "/text-generator":
-        return "";
-      case "/code-generator":
-        return "";
-      case "/image-generator":
-        return "";
-      case "/video-generator":
-        return "";
-      case "/ai-settings":
-        return "";
-      default:
-        return "p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6";
-    }
-  };
-
   // Dynamic class for main content margin based on sidebar state
   const mainContentMargin = isMobileOpen
     ? "ml-0"
     : isExpanded || isHovered
-      ? "xl:ml-[290px]"
-      : "xl:ml-[90px]";
+      ? "xl:ml-[250px]"
+      : "xl:ml-[86px]";
 
   return (
     <div className="min-h-screen xl:flex">
@@ -53,7 +35,7 @@ export default function AdminLayout({
         {/* Header */}
         <AppHeader />
         {/* Page Content */}
-        <div className={getRouteSpecificStyles()}>{children}</div>
+        <div className="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">{children}</div>
       </div>
     </div>
   );
