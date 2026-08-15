@@ -20,6 +20,9 @@ CONVERTED=(
   "src/app/(admin)/memory/page.tsx"
   "src/components/continuum/TranscriptEvent.tsx"
   "src/components/continuum/MemoryList.tsx"
+  "src/app/(admin)/rooms/page.tsx"
+  "src/app/(admin)/agents/page.tsx"
+  "src/app/(admin)/projects/page.tsx"
   "src/layout/AppSidebar.tsx"
   "src/layout/AppHeader.tsx"
 )

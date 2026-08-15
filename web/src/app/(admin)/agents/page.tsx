@@ -1,11 +1,15 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import type { AgentDto, HandoffDto } from "@/lib/continuum";
+import { Chip, TAG, tagFor } from "@/components/bui";
+import { PageHeader, Section } from "@/components/bui/page";
+import { DataTable } from "@/components/bui/table";
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentDto[]>([]);
   const [handoffs, setHandoffs] = useState<HandoffDto[]>([]);
   const [ok, setOk] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -18,6 +22,8 @@ export default function AgentsPage() {
       setOk(true);
     } catch {
       setOk(false);
+    } finally {
+      setLoaded(true);
     }
   }, []);
 
@@ -28,49 +34,66 @@ export default function AgentsPage() {
   }, [refresh]);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white/90">Agents &amp; Bus</h2>
-        <span className={`h-2.5 w-2.5 rounded-full ${ok ? "animate-pulse bg-success-500" : "bg-error-500"}`} title={ok ? "live" : "offline"} />
-      </div>
-      <p className="-mt-3 text-sm text-gray-500 dark:text-gray-400">Registered agents and open hand-offs, refreshed live.</p>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Agents & bus"
+        subtitle="Registered agents and open hand-offs, refreshed every five seconds."
+        actions={
+          // The live indicator states its own condition rather than relying on a bare coloured dot.
+          <Chip dot={ok ? TAG.green : TAG.red}>{ok ? "live" : loaded ? "offline" : "connecting"}</Chip>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h3 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">Agents ({agents.length})</h3>
-          {agents.length === 0 ? (
-            <p className="text-sm text-gray-400">None registered.</p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {agents.map((a) => (
-                <li key={a.id} className="text-sm">
-                  <span className="font-medium text-gray-800 dark:text-white/90">{a.name}</span>
-                  {a.capabilities && <span className="text-gray-500 dark:text-gray-400"> — {a.capabilities}</span>}
-                  <span className="ml-2 text-xs text-gray-400">{new Date(a.lastSeenAt).toLocaleTimeString()}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <Section title={`Agents · ${agents.length}`}>
+          <DataTable
+            rows={agents}
+            rowKey={(a) => a.id}
+            empty="No agents registered."
+            emptyHint="An agent appears once it calls agent_register, or joins a room."
+            columns={[
+              {
+                key: "name",
+                header: "Agent",
+                cell: (a) => (
+                  <span className="flex items-center gap-2">
+                    <span className="size-1.5 shrink-0 rounded-full" style={{ background: tagFor(a.name) }} />
+                    <span className="font-medium text-gray-800 dark:text-white/90">{a.name}</span>
+                  </span>
+                ),
+              },
+              {
+                key: "caps",
+                header: "Capabilities",
+                cell: (a) => <span className="text-gray-500">{a.capabilities || "—"}</span>,
+              },
+              {
+                key: "seen",
+                header: "Last seen",
+                numeric: true,
+                cell: (a) => new Date(a.lastSeenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              },
+            ]}
+          />
+        </Section>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h3 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">Open hand-offs ({handoffs.length})</h3>
-          {handoffs.length === 0 ? (
-            <p className="text-sm text-gray-400">None open.</p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {handoffs.map((h) => (
-                <li key={h.id} className="text-sm">
-                  <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-600 dark:bg-success-500/15 dark:text-success-400">
-                    {h.status}
-                  </span>{" "}
-                  <span className="font-medium text-gray-800 dark:text-white/90">{h.title}</span>
-                  <span className="text-gray-500 dark:text-gray-400"> from {h.fromAgent}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <Section title={`Open hand-offs · ${handoffs.length}`}>
+          <DataTable
+            rows={handoffs}
+            rowKey={(h) => h.id}
+            empty="Nothing waiting to be picked up."
+            emptyHint="An agent creates one with handoff_create when it wants another to take over."
+            columns={[
+              {
+                key: "title",
+                header: "Task",
+                cell: (h) => <span className="font-medium text-gray-800 dark:text-white/90">{h.title}</span>,
+              },
+              { key: "from", header: "From", cell: (h) => <Chip dot={tagFor(h.fromAgent)}>{h.fromAgent}</Chip> },
+              { key: "status", header: "Status", cell: (h) => <Chip dot={TAG.green}>{h.status}</Chip> },
+            ]}
+          />
+        </Section>
       </div>
     </div>
   );
