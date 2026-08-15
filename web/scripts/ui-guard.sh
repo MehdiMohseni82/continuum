@@ -31,6 +31,8 @@ CONVERTED=(
   "src/app/(admin)/settings/page.tsx"
   "src/components/continuum/TokenManager.tsx"
   "src/components/continuum/ChangePassword.tsx"
+  "src/app/(admin)/users/page.tsx"
+  "src/components/continuum/UserManager.tsx"
   "src/layout/AppSidebar.tsx"
   "src/layout/AppHeader.tsx"
 )

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { capi, getMe, AppUser } from "@/lib/continuum";
 import UserManager from "@/components/continuum/UserManager";
+import { Card } from "@/components/bui";
+import { PageHeader, Empty } from "@/components/bui/page";
 
 export const metadata = { title: "Users" };
 export const dynamic = "force-dynamic";
@@ -8,11 +10,16 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage() {
   const me = await getMe();
   if (!me) redirect("/login");
+
   if (me.role !== "Admin") {
     return (
-      <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white/90">Users</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Only admins can manage users.</p>
+      <div className="flex max-w-3xl flex-col gap-4">
+        <PageHeader title="Users" />
+        <Card padded={false}>
+          <Empty hint="Ask an administrator to add someone to your organization.">
+            Only administrators can manage accounts.
+          </Empty>
+        </Card>
       </div>
     );
   }
@@ -20,13 +27,14 @@ export default async function UsersPage() {
   const users = await capi<AppUser[]>("/api/users");
 
   return (
-    <div className="flex max-w-4xl flex-col gap-5">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white/90">Users</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Each person sees only their own history and memory unless they share it. Admins see everything.
-        </p>
-      </div>
+    <div className="flex max-w-5xl flex-col gap-4">
+      <PageHeader
+        title="Users"
+        // The old copy said "Admins see everything", which the privacy work makes untrue: an
+        // administrator manages the instance without that granting them a right to read what people
+        // keep private. Saying otherwise in the interface is worse than saying nothing.
+        subtitle="Everyone sees only their own history and memory unless they share it."
+      />
       <UserManager initialUsers={users} meId={me.id} />
     </div>
   );
