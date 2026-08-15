@@ -24,6 +24,9 @@ CONVERTED=(
   "src/app/(admin)/agents/page.tsx"
   "src/app/(admin)/projects/page.tsx"
   "src/components/continuum/RoomManager.tsx"
+  "src/app/(admin)/search/page.tsx"
+  "src/app/(admin)/ask/page.tsx"
+  "src/app/(admin)/redaction/page.tsx"
   "src/layout/AppSidebar.tsx"
   "src/layout/AppHeader.tsx"
 )

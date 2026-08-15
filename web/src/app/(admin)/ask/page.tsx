@@ -2,17 +2,23 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { AskResponse } from "@/lib/continuum";
+import { Card, Chip, TAG } from "@/components/bui";
+import { PageHeader, Empty } from "@/components/bui/page";
 
 type Turn = { q: string; a?: AskResponse; error?: boolean };
+
+const EXAMPLES = [
+  "What did I decide about the auth token contract?",
+  "Which projects use pgvector?",
+  "What was the cost driver in the scraper?",
+];
 
 export default function AskPage() {
   const [q, setQ] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
 
-  async function ask(e: React.FormEvent) {
-    e.preventDefault();
-    const question = q.trim();
+  async function send(question: string) {
     if (!question || busy) return;
     setQ("");
     setBusy(true);
@@ -33,75 +39,96 @@ export default function AskPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white/90">Ask my history</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Answers from your own sessions &amp; memories — retrieved and reasoned over locally.
-        </p>
-      </div>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      <PageHeader
+        title="Ask my history"
+        subtitle="Answers drawn from your own sessions and memories, retrieved and reasoned over on your own server."
+      />
 
-      {turns.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400 dark:border-gray-700">
-          Try: “What did I decide about the auth token contract?” · “Which projects use pgvector?” ·
-          “What was the cost driver in the scraper?”
+      {turns.length === 0 ? (
+        <Card padded={false}>
+          <Empty hint="Answers cite the sessions and memories they came from, so you can check them.">
+            Ask anything about your past work.
+          </Empty>
+          {/* Examples are clickable rather than decorative — the fastest way to learn what it can do. */}
+          <div className="flex flex-wrap justify-center gap-1.5 px-4 pb-4">
+            {EXAMPLES.map((e) => (
+              <button
+                key={e}
+                onClick={() => send(e)}
+                className="rounded-chip bg-stripe px-2.5 py-1 text-left text-[12px] text-gray-600 shadow-hairline hover:text-accent-ink dark:text-gray-300"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {turns.map((t, i) => (
+            <div key={i} className="flex flex-col gap-2">
+              <div className="self-end rounded-card rounded-br-sm bg-accent px-3 py-1.5 text-[13px] text-white">
+                {t.q}
+              </div>
+
+              {t.a ? (
+                <Card className="rounded-bl-sm">
+                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 dark:text-gray-100">
+                    {t.a.answer}
+                  </p>
+                  {t.a.sources.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5 border-t border-line pt-2.5">
+                      {t.a.sources.map((s, j) =>
+                        s.sessionId ? (
+                          <Link key={j} href={`/sessions/${s.sessionId}`} title={s.snippet}>
+                            <Chip dot={s.kind === "memory" ? TAG.violet : TAG.blue}>
+                              {s.sessionTitle || "session"}
+                            </Chip>
+                          </Link>
+                        ) : (
+                          <span key={j} title={s.snippet}>
+                            <Chip dot={TAG.violet}>memory</Chip>
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </Card>
+              ) : t.error ? (
+                <Card className="border-l-2 border-l-[#ee6572]">
+                  <p className="text-[13px] text-gray-700 dark:text-gray-200">
+                    Couldn&apos;t answer that.
+                  </p>
+                  <p className="mt-1 text-[12px] text-gray-400">
+                    The model runs on your own server and is slow under load — worth retrying.
+                  </p>
+                </Card>
+              ) : (
+                <div className="flex items-center gap-2 px-1 text-[12px] text-gray-400">
+                  <span className="size-1.5 animate-pulse rounded-full bg-accent" />
+                  Reading your history…
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      <div className="flex flex-col gap-4">
-        {turns.map((t, i) => (
-          <div key={i} className="flex flex-col gap-3">
-            <div className="self-end rounded-2xl rounded-br-sm bg-brand-500 px-4 py-2 text-sm text-white">{t.q}</div>
-            {t.a ? (
-              <div className="rounded-2xl rounded-bl-sm border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">{t.a.answer}</p>
-                {t.a.sources.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
-                    {t.a.sources.map((s, j) =>
-                      s.sessionId ? (
-                        <Link
-                          key={j}
-                          href={`/sessions/${s.sessionId}`}
-                          title={s.snippet}
-                          className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600 hover:bg-brand-50 hover:text-brand-600 dark:bg-gray-800 dark:text-gray-300"
-                        >
-                          {s.kind === "memory" ? "🧠" : "📄"} {s.sessionTitle || "session"}
-                        </Link>
-                      ) : (
-                        <span key={j} title={s.snippet} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                          🧠 memory
-                        </span>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : t.error ? (
-              <div className="rounded-2xl border border-error-200 bg-error-50 p-3 text-sm text-error-600 dark:border-error-500/30 dark:bg-error-500/10">
-                Couldn&apos;t answer that — the backend or model may be busy.
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-brand-400" />
-                thinking over your history…
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <form onSubmit={ask} className="sticky bottom-4 flex gap-2">
+      <form
+        onSubmit={(e) => { e.preventDefault(); send(q.trim()); }}
+        className="sticky bottom-4 flex gap-2"
+      >
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Ask anything about your past work…"
-          className="h-12 flex-1 rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-800 shadow-sm focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-9 flex-1 rounded-control bg-surface px-3 text-[13px] text-gray-800 shadow-btn placeholder:text-gray-400 focus:outline-none focus:shadow-[0_0_0_1px_var(--bui-accent)] dark:text-white/90"
         />
         <button
           disabled={busy}
-          className="h-12 rounded-xl bg-brand-500 px-6 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+          className="h-9 shrink-0 rounded-control bg-accent px-4 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50"
         >
-          Ask
+          {busy ? "…" : "Ask"}
         </button>
       </form>
     </div>
