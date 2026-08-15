@@ -27,6 +27,7 @@ CONVERTED=(
   "src/app/(admin)/search/page.tsx"
   "src/app/(admin)/ask/page.tsx"
   "src/app/(admin)/redaction/page.tsx"
+  "src/app/(admin)/usage/page.tsx"
   "src/layout/AppSidebar.tsx"
   "src/layout/AppHeader.tsx"
 )
