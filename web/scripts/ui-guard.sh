@@ -28,6 +28,9 @@ CONVERTED=(
   "src/app/(admin)/ask/page.tsx"
   "src/app/(admin)/redaction/page.tsx"
   "src/app/(admin)/usage/page.tsx"
+  "src/app/(admin)/settings/page.tsx"
+  "src/components/continuum/TokenManager.tsx"
+  "src/components/continuum/ChangePassword.tsx"
   "src/layout/AppSidebar.tsx"
   "src/layout/AppHeader.tsx"
 )

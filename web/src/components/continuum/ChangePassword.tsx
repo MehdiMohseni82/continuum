@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Input } from "@/components/bui/form";
 
 export default function ChangePassword() {
   const [current, setCurrent] = useState("");
@@ -33,25 +34,23 @@ export default function ChangePassword() {
 
   return (
     <form onSubmit={submit} className="flex max-w-sm flex-col gap-3">
-      <input
+      <Input
         type="password"
         value={current}
         onChange={(e) => setCurrent(e.target.value)}
         placeholder="Current password"
         required
-        className="h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
       />
-      <input
+      <Input
         type="password"
         value={next}
         onChange={(e) => setNext(e.target.value)}
         placeholder="New password (min 8 chars)"
         minLength={8}
         required
-        className="h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
       />
-      {msg && <p className={`text-sm ${msg.ok ? "text-success-600" : "text-error-500"}`}>{msg.text}</p>}
-      <button disabled={busy} className="h-10 w-fit rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+      {msg && <p className={`text-[12px] ${msg.ok ? "text-[#25a878]" : "text-[#ee6572]"}`}>{msg.text}</p>}
+      <button disabled={busy} className="h-8 w-fit rounded-control bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50">
         {busy ? "…" : "Update password"}
       </button>
     </form>
