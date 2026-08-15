@@ -24,13 +24,13 @@ const WIDTH = {
 
 export function Input({
   size = "md", className, ...rest
-}: { size?: keyof typeof WIDTH } & React.InputHTMLAttributes<HTMLInputElement>) {
+}: { size?: keyof typeof WIDTH } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "size">) {
   return <input {...rest} className={cx(base, WIDTH[size], className)} />;
 }
 
 export function Select({
   size = "md", className, children, ...rest
-}: { size?: keyof typeof WIDTH } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+}: { size?: keyof typeof WIDTH } & Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size">) {
   return (
     <select {...rest} className={cx(base, WIDTH[size], "pr-7", className)}>
       {children}
