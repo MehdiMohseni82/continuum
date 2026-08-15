@@ -44,7 +44,7 @@ const AppHeader: React.FC = () => {
   return (
     <header className="sticky top-0 z-99999 flex w-full border-line bg-surface xl:border-b">
       <div className="flex flex-col items-center justify-between grow xl:flex-row xl:px-6">
-        <div className="flex w-full items-center justify-between gap-2 border-b border-line px-3 py-2.5 sm:gap-4 xl:justify-normal xl:border-b-0 xl:px-0 xl:py-3">
+        <div className="flex w-full items-center justify-between gap-2 border-b border-line px-3 py-2 sm:gap-4 xl:justify-normal xl:border-b-0 xl:px-0 xl:py-3">
           <button
             className={`flex items-center justify-center w-10 h-10 text-gray-500 border-gray-200 rounded-lg z-99999 dark:border-gray-800 dark:text-gray-400 lg:h-11 lg:w-11 xl:border lg:bg-transparent dark:lg:bg-transparent ${
               isMobileOpen ? "bg-gray-100 dark:bg-white/3" : ""
@@ -147,7 +147,7 @@ const AppHeader: React.FC = () => {
                   ref={inputRef}
                   type="text"
                   placeholder="Search or type command..."
-                  className="h-9 w-full rounded-control bg-stripe py-2 pl-11 pr-14 text-sm text-gray-800 shadow-inset-field placeholder:text-gray-400 focus:outline-none focus:shadow-[0_0_0_1px_var(--bui-accent)] dark:text-white/90 xl:w-[380px]"
+                  className="h-8 w-full rounded-control bg-stripe py-1.5 pl-10 pr-12 text-sm text-gray-800 shadow-inset-field placeholder:text-gray-400 focus:outline-none focus:shadow-[0_0_0_1px_var(--bui-accent)] dark:text-white/90 xl:w-[300px]"
                 />
                 <button className="absolute right-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-[7px] py-[4.5px] text-xs -tracking-[0.2px] text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
                   <span> ⌘ </span>

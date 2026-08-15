@@ -28,10 +28,10 @@
 }
 
 .dark {
-  --bui-surface: #232427;
-  --bui-stripe: #1b1c1e;
-  --bui-line: #2e3033;
-  --bui-line-strong: #3a3c40;
+  --bui-surface: #1e2023;
+  --bui-stripe: #141517;
+  --bui-line: #2b2e33;
+  --bui-line-strong: #3d4147;
   --bui-accent: #3d9aff;
   --bui-accent-ink: #7ec0ff;
   --bui-accent-tint: #3d9aff29;
@@ -44,6 +44,11 @@
 }
 
 @theme inline {
+  /* Control and type scale. Tight on purpose: this is an instrument, not a landing page. */
+  --text-page: 20px;
+  --text-section: 13px;
+  --spacing-control: 32px;
+
   --color-surface: var(--bui-surface);
   --color-stripe: var(--bui-stripe);
   --color-line: var(--bui-line);

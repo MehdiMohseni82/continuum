@@ -60,7 +60,7 @@ export default function AppSidebar() {
       onMouseLeave={() => setIsHovered(false)}
       className={`fixed top-0 left-0 z-50 flex h-screen flex-col border-r border-line bg-stripe px-3 py-4
         transition-all duration-300 ease-out
-        ${wide ? "w-[250px]" : "w-[86px]"}
+        ${wide ? "w-[218px]" : "w-[86px]"}
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"} xl:translate-x-0`}
     >
       <Link href="/" className="mb-2 flex items-center gap-2.5 px-2 py-1">
@@ -93,7 +93,7 @@ export default function AppSidebar() {
                   key={item.path}
                   href={item.path}
                   title={wide ? undefined : item.name}
-                  className={`mb-0.5 flex items-center gap-2.5 rounded-control px-2 py-1.5 text-[13px] transition-colors
+                  className={`mb-0.5 flex items-center gap-2.5 rounded-control px-2 py-[5px] text-[12.5px] transition-colors
                     ${active
                       ? "bg-accent-tint font-medium text-accent-ink"
                       : "text-gray-600 hover:bg-surface hover:text-gray-900 dark:text-gray-400 dark:hover:text-white/90"}

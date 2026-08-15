@@ -19,7 +19,7 @@ export default function AdminLayout({
   const mainContentMargin = isMobileOpen
     ? "ml-0"
     : isExpanded || isHovered
-      ? "xl:ml-[250px]"
+      ? "xl:ml-[218px]"
       : "xl:ml-[86px]";
 
   return (
@@ -35,7 +35,7 @@ export default function AdminLayout({
         {/* Header */}
         <AppHeader />
         {/* Page Content */}
-        <div className="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">{children}</div>
+        <div className="mx-auto max-w-[1500px] p-4 md:px-6 md:py-5">{children}</div>
       </div>
     </div>
   );
