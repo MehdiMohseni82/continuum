@@ -1,15 +1,23 @@
 "use client";
 import { useState } from "react";
 import type { MemoryDto, MemoryType } from "@/lib/continuum";
+import { Card, Chip, TAG } from "@/components/bui";
+import { Empty } from "@/components/bui/page";
+import { Textarea } from "@/components/bui/form";
 
-const typeColor: Record<MemoryType, string> = {
-  User: "bg-blue-light-50 text-blue-light-600 dark:bg-blue-light-500/15 dark:text-blue-light-400",
-  Feedback: "bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400",
-  Project: "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400",
-  Reference: "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400",
+/** Memory type is a kind, so it takes a colour from the categorical palette. */
+const TYPE_DOT: Record<MemoryType, string> = {
+  User: TAG.violet,
+  Feedback: TAG.amber,
+  Project: TAG.green,
+  Reference: TAG.cyan,
 };
 
-export default function MemoryList({ items, emptyText }: { items: MemoryDto[]; emptyText: string }) {
+export default function MemoryList({ items, emptyText, emptyHint }: {
+  items: MemoryDto[];
+  emptyText: string;
+  emptyHint?: string;
+}) {
   const [list, setList] = useState(items);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -43,98 +51,89 @@ export default function MemoryList({ items, emptyText }: { items: MemoryDto[]; e
     }
   }
 
-  function startEdit(m: MemoryDto) {
-    setEditing(m.id);
-    setDraft(m.content);
-  }
-
   async function saveEdit(id: string) {
     const content = draft.trim();
     setEditing(null);
     if (content) await patch(id, { content });
   }
 
-  // Pinned first, then by salience — mirror the server ordering as the list mutates.
-  const sorted = [...list].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned) || b.salience - a.salience,
-  );
+  // Pinned first, then by salience — mirrors the server ordering as the list mutates.
+  const sorted = [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.salience - a.salience);
 
-  if (list.length === 0) return <p className="py-10 text-center text-gray-400">{emptyText}</p>;
+  if (list.length === 0) {
+    return (
+      <Card padded={false}>
+        <Empty hint={emptyHint}>{emptyText}</Empty>
+      </Card>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-3">
+    <Card padded={false} className="divide-y divide-line">
       {sorted.map((m) => (
-        <div
-          key={m.id}
-          className={`group rounded-2xl border bg-white p-4 dark:bg-white/[0.03] ${
-            m.pinned ? "border-orange-200 dark:border-orange-500/30" : "border-gray-200 dark:border-gray-800"
-          }`}
-        >
-          <div className="mb-2 flex flex-wrap items-center gap-3">
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColor[m.type]}`}>{m.type}</span>
-            <span className="font-mono text-xs text-gray-400">salience {m.salience.toFixed(2)}</span>
-            {m.score != null && <span className="font-mono text-xs text-gray-400">match {m.score.toFixed(2)}</span>}
-            <div className="ml-auto flex items-center gap-3 text-xs font-medium opacity-0 transition group-hover:opacity-100">
-              <button
-                onClick={() => patch(m.id, { pinned: !m.pinned })}
-                disabled={busy === m.id}
-                className={`${m.pinned ? "text-orange-500 opacity-100" : "text-gray-400 hover:text-orange-500"} disabled:opacity-40`}
-                title={m.pinned ? "Unpin" : "Pin — keeps salience at max"}
-              >
-                {m.pinned ? "📌 Pinned" : "Pin"}
+        <article key={m.id} className="group px-4 py-3">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <Chip dot={TYPE_DOT[m.type]}>{m.type}</Chip>
+            {m.pinned && <Chip dot={TAG.amber}>pinned</Chip>}
+
+            {/*
+              Visibility states what is true rather than offering an action, because the old two-state
+              toggle said "Share" for a memory already shared with named people — under-reporting who
+              could see it, which is the one thing a privacy control must never do.
+            */}
+            <Chip
+              tone={m.shared ? "accent" : "plain"}
+              title={m.shared ? "Everyone in your organization can read this" : "Only you can read this"}
+            >
+              {m.shared ? "Org" : "Private"}
+            </Chip>
+
+            <span className="font-mono text-[11px] text-gray-400">
+              salience {m.salience.toFixed(2)}
+              {m.score != null && ` · match ${m.score.toFixed(2)}`}
+            </span>
+
+            {/* Actions stay hidden until hover, but remain reachable by keyboard. */}
+            <div className="ml-auto flex items-center gap-2.5 text-[12px] opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+              <button onClick={() => patch(m.id, { pinned: !m.pinned })} disabled={busy === m.id}
+                className="text-gray-400 hover:text-accent-ink disabled:opacity-40">
+                {m.pinned ? "Unpin" : "Pin"}
               </button>
-              <button
-                onClick={() => patch(m.id, { shared: !m.shared })}
-                disabled={busy === m.id}
-                className={`${m.shared ? "text-success-500 opacity-100" : "text-gray-400 hover:text-success-500"} disabled:opacity-40`}
-                title={m.shared ? "Shared with everyone — click to make private" : "Private — click to share with all users"}
-              >
-                {m.shared ? "Shared" : "Share"}
+              <button onClick={() => patch(m.id, { shared: !m.shared })} disabled={busy === m.id}
+                className="text-gray-400 hover:text-accent-ink disabled:opacity-40">
+                {m.shared ? "Make private" : "Share with org"}
               </button>
-              <button
-                onClick={() => startEdit(m)}
-                disabled={busy === m.id}
-                className="text-gray-400 hover:text-brand-500 disabled:opacity-40"
-              >
+              <button onClick={() => { setEditing(m.id); setDraft(m.content); }} disabled={busy === m.id}
+                className="text-gray-400 hover:text-accent-ink disabled:opacity-40">
                 Edit
               </button>
-              <button
-                onClick={() => forget(m.id)}
-                disabled={busy === m.id}
-                className="text-gray-400 hover:text-error-500 disabled:opacity-40"
-              >
+              <button onClick={() => forget(m.id)} disabled={busy === m.id}
+                className="text-gray-400 hover:text-[#ee6572] disabled:opacity-40">
                 {busy === m.id ? "…" : "Forget"}
               </button>
             </div>
-            {m.pinned && (
-              <span className="order-first text-xs font-medium text-orange-500 opacity-100 group-hover:hidden">📌 pinned</span>
-            )}
           </div>
 
           {editing === m.id ? (
             <div className="flex flex-col gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                autoFocus
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-gray-200"
-              />
-              <div className="flex gap-2 text-xs font-medium">
-                <button onClick={() => saveEdit(m.id)} className="rounded-lg bg-brand-500 px-3 py-1.5 text-white hover:bg-brand-600">
+              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus rows={3} />
+              <div className="flex items-center gap-2 text-[12px]">
+                <button onClick={() => saveEdit(m.id)}
+                  className="rounded-control bg-accent px-2.5 py-1 font-medium text-white hover:bg-accent-ink">
                   Save
                 </button>
-                <button onClick={() => setEditing(null)} className="rounded-lg px-3 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+                <button onClick={() => setEditing(null)}
+                  className="rounded-control px-2.5 py-1 text-gray-500 hover:bg-stripe">
                   Cancel
                 </button>
-                <span className="self-center text-gray-400">Secrets are re-redacted on save.</span>
+                <span className="text-gray-400">Secrets are re-redacted on save.</span>
               </div>
             </div>
           ) : (
-            <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-200">{m.content}</p>
+            <p className="max-w-[80ch] text-[13px] leading-relaxed text-gray-700 dark:text-gray-200">{m.content}</p>
           )}
-        </div>
+        </article>
       ))}
-    </div>
+    </Card>
   );
 }

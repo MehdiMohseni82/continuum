@@ -1,5 +1,7 @@
 import { capi, MemoryDto } from "@/lib/continuum";
 import MemoryList from "@/components/continuum/MemoryList";
+import { PageHeader } from "@/components/bui/page";
+import { Input } from "@/components/bui/form";
 
 export const metadata = { title: "Memory" };
 export const dynamic = "force-dynamic";
@@ -11,25 +13,29 @@ export default async function MemoryPage({ searchParams }: { searchParams: Promi
     : await capi<MemoryDto[]>(`/api/memory?take=100`);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white/90">Memory</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">The durable facts Claude can recall (secrets redacted).</p>
-      </div>
-
-      <form action="/memory" className="flex gap-2">
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Semantic recall — what do I know about…"
-          className="h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
-        />
-        <button className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600">Recall</button>
-      </form>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Memory"
+        subtitle="The durable facts Claude can recall. Secrets are redacted before anything is stored."
+        actions={
+          // Capped rather than full-width: this used to span the whole canvas at 48px tall.
+          <form action="/memory" className="flex items-center gap-2">
+            <Input name="q" size="lg" defaultValue={q ?? ""} placeholder="Semantic recall — what do I know about…" />
+            <button className="h-8 shrink-0 rounded-control bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-ink">
+              Recall
+            </button>
+          </form>
+        }
+      />
 
       <MemoryList
         items={items}
-        emptyText={q ? `Nothing recalled for “${q}”.` : "No memories yet — Claude saves them via the memory_save tool."}
+        emptyText={q ? `Nothing recalled for “${q}”.` : "No memories yet."}
+        emptyHint={
+          q
+            ? "Try fewer or broader words — recall is semantic, not keyword matching."
+            : "Claude writes them with the memory_save tool, and the extraction worker distils them from idle sessions."
+        }
       />
     </div>
   );
