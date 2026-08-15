@@ -2,18 +2,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { RoomDto, LanguageMode } from "@/lib/continuum";
-
-const inputCls =
-  "h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90";
+import { Card, Chip, TAG } from "@/components/bui";
+import { Empty, Section } from "@/components/bui/page";
+import { Input, Select, Textarea, Field, FormRow } from "@/components/bui/form";
 
 export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] }) {
   const [rooms, setRooms] = useState(initialRooms);
-  const [form, setForm] = useState<{ name: string; topic: string; languageMode: LanguageMode; language: string; systemPrompt: string }>({
-    name: "",
-    topic: "",
-    languageMode: "Human",
-    language: "English",
-    systemPrompt: "",
+  const [open, setOpen] = useState(initialRooms.length === 0);
+  const [form, setForm] = useState({
+    name: "", topic: "", languageMode: "Human" as LanguageMode, language: "English", systemPrompt: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +29,7 @@ export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] 
         const created: RoomDto = await res.json();
         setRooms((r) => [created, ...r]);
         setForm({ name: "", topic: "", languageMode: "Human", language: "English", systemPrompt: "" });
+        setOpen(false);
       } else {
         setError((await res.text()) || "Could not create room.");
       }
@@ -41,85 +39,117 @@ export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] 
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <form onSubmit={create} className="flex flex-col gap-3 rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
-        <div className="flex flex-wrap gap-2">
-          <input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Room name (e.g. Get to know each other)"
-            required
-            className={`${inputCls} flex-1`}
-          />
-          <select
-            value={form.languageMode}
-            onChange={(e) => setForm({ ...form, languageMode: e.target.value as LanguageMode })}
-            className={inputCls}
+    <div className="flex flex-col gap-4">
+      <Section
+        title={`Rooms · ${rooms.length}`}
+        actions={
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink"
           >
-            <option value="Human">Human language</option>
-            <option value="Shorthand">Machine shorthand</option>
-          </select>
-          {form.languageMode === "Human" && (
-            <input
-              value={form.language}
-              onChange={(e) => setForm({ ...form, language: e.target.value })}
-              placeholder="Language (e.g. English, Farsi)"
-              className={`${inputCls} w-44`}
-            />
-          )}
-        </div>
-        <textarea
-          value={form.topic}
-          onChange={(e) => setForm({ ...form, topic: e.target.value })}
-          placeholder="Topic — what should the agents talk about?"
-          required
-          rows={2}
-          className="rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
-        />
-        <textarea
-          value={form.systemPrompt}
-          onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
-          placeholder="System prompt (optional) — standing framing fed to each agent on join: its role, the goal, rules of engagement"
-          rows={4}
-          className="rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
-        />
-        <div className="flex items-center gap-3">
-          <button disabled={busy} className="h-10 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
-            {busy ? "Creating…" : "Create room"}
+            {open ? "Cancel" : "New room"}
           </button>
-          {error && <p className="text-sm text-error-500">{error}</p>}
-        </div>
-      </form>
+        }
+      >
+        {/*
+          The form used to sit permanently open above the list, three full-width boxes deep, so the
+          rooms themselves started below the fold. It now folds away unless there is nothing to show.
+        */}
+        {open && (
+          <Card className="mb-3 flex flex-col gap-3">
+            <form onSubmit={create} className="flex flex-col gap-3">
+              <FormRow>
+                <Field label="Name" className="flex-1 min-w-[240px]">
+                  <Input
+                    size="full"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g. Ingest parser design"
+                    required
+                  />
+                </Field>
+                <Field label="Speak">
+                  <Select
+                    value={form.languageMode}
+                    onChange={(e) => setForm({ ...form, languageMode: e.target.value as LanguageMode })}
+                  >
+                    <option value="Human">Human language</option>
+                    <option value="Shorthand">Machine shorthand</option>
+                  </Select>
+                </Field>
+                {form.languageMode === "Human" && (
+                  <Field label="Language">
+                    <Input
+                      size="sm"
+                      value={form.language}
+                      onChange={(e) => setForm({ ...form, language: e.target.value })}
+                      placeholder="English"
+                    />
+                  </Field>
+                )}
+              </FormRow>
 
-      <div className="flex flex-col gap-3">
-        {rooms.length === 0 && <p className="py-6 text-center text-gray-400">No rooms yet.</p>}
-        {rooms.map((r) => {
-          const open = r.status === "open";
-          return (
-            <Link
-              key={r.id}
-              href={`/rooms/${r.id}`}
-              className="rounded-2xl border border-gray-200 bg-white p-4 hover:border-brand-500 dark:border-gray-800 dark:bg-white/[0.03]"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-medium text-gray-800 dark:text-white/90">{r.name}</span>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${open
-                  ? "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400"
-                  : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
-                  {open ? "open" : "closed"}
-                </span>
-                <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                  {r.languageMode === "Human" ? (r.language || "Human") : "shorthand"}
-                </span>
-                <span className="ml-auto text-xs text-gray-400">
-                  {r.memberCount} agent(s) · {r.messageCount} msg(s)
-                </span>
+              <Field label="Topic" hint="What the agents are here to settle.">
+                <Textarea
+                  value={form.topic}
+                  onChange={(e) => setForm({ ...form, topic: e.target.value })}
+                  required
+                  rows={2}
+                />
+              </Field>
+
+              <Field
+                label="System prompt"
+                hint="Optional. Standing framing fed to each agent as it joins — its role, the goal, the rules of engagement."
+              >
+                <Textarea
+                  value={form.systemPrompt}
+                  onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
+                  rows={3}
+                />
+              </Field>
+
+              <div className="flex items-center gap-3">
+                <button
+                  disabled={busy}
+                  className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50"
+                >
+                  {busy ? "Creating…" : "Create room"}
+                </button>
+                {error && <p className="text-[12px] text-[#ee6572]">{error}</p>}
               </div>
-              <p className="mt-2 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{r.topic}</p>
-            </Link>
-          );
-        })}
-      </div>
+            </form>
+          </Card>
+        )}
+
+        {rooms.length === 0 ? (
+          <Card padded={false}>
+            <Empty hint="A room is where two agents — yours and a colleague's — work something out in the open.">
+              No rooms yet.
+            </Empty>
+          </Card>
+        ) : (
+          <Card padded={false} className="divide-y divide-line">
+            {rooms.map((r) => {
+              const isOpen = r.status === "open";
+              return (
+                <Link key={r.id} href={`/rooms/${r.id}`} className="block px-4 py-3 hover:bg-stripe">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-gray-800 dark:text-white/90">{r.name}</span>
+                    <Chip dot={isOpen ? TAG.green : undefined}>{isOpen ? "open" : "closed"}</Chip>
+                    <Chip>{r.languageMode === "Human" ? r.language || "Human" : "shorthand"}</Chip>
+                    <span className="ml-auto font-mono text-[11px] text-gray-400">
+                      {r.memberCount} agents · {r.messageCount} msgs
+                      {r.totalTokens > 0 && ` · ${(r.totalTokens / 1000).toFixed(1)}k tok`}
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 max-w-[90ch] text-[13px] text-gray-600 dark:text-gray-300">{r.topic}</p>
+                </Link>
+              );
+            })}
+          </Card>
+        )}
+      </Section>
     </div>
   );
 }
