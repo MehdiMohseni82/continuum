@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 DAEMON_DIR="$INSTALL_DIR/daemon"
 MCP_DIR="$INSTALL_DIR/mcp"
+CLI_DIR="$HOME/.continuum/bin"
 DOTNET="$(command -v dotnet || true)"
 [[ -n "$DOTNET" ]] || { echo "ERROR: dotnet not found on PATH." >&2; exit 1; }
 
@@ -47,10 +48,11 @@ pkill -f "Continuum.Daemon.dll" 2>/dev/null || true
 if $IS_MAC; then launchctl unload "$HOME/Library/LaunchAgents/com.continuum.daemon.plist" 2>/dev/null || true; fi
 sleep 2
 
-# 2) publish daemon + mcp
-echo "Publishing daemon + MCP..."
+# 2) publish daemon + mcp + the `continuum` CLI
+echo "Publishing daemon + MCP + CLI..."
 "$DOTNET" publish "$REPO/src/Continuum.Daemon" -c Release -o "$DAEMON_DIR" --nologo >/dev/null
 "$DOTNET" publish "$REPO/src/Continuum.Mcp"    -c Release -o "$MCP_DIR"    --nologo >/dev/null
+"$DOTNET" publish "$REPO/src/Continuum.Cli"    -c Release -o "$CLI_DIR"    --nologo >/dev/null
 
 # 2b) One config file every Continuum piece can read. The hooks and the `continuum` CLI look here
 # when CONTINUUM_BACKEND/CONTINUUM_TOKEN aren't exported — previously they silently fell back to
@@ -60,10 +62,27 @@ cat > "$HOME/.continuum/config.json" <<JSON
 {
   "backend": "$BACKEND",
   "token": "$TOKEN",
-  "machine": "$MACHINE"
+  "machine": "$MACHINE",
+  "agent": "$MACHINE"
 }
 JSON
 chmod 600 "$HOME/.continuum/config.json"
+
+# 2c) Put `continuum` on PATH. The slash commands invoke it by bare name so they survive Claude
+# settings sync across machines — a path-free command is the whole point, so PATH has to be real.
+if ! command -v continuum >/dev/null 2>&1 || [ "$(command -v continuum)" != "$CLI_DIR/continuum" ]; then
+  case "${SHELL:-}" in
+    */zsh) RC="$HOME/.zshrc" ;;
+    */bash) RC="$HOME/.bashrc" ;;
+    *) RC="$HOME/.profile" ;;
+  esac
+  # Marker-guarded so re-running doesn't stack duplicate PATH entries.
+  if ! grep -q '# continuum-cli' "$RC" 2>/dev/null; then
+    printf '\nexport PATH="%s:$PATH"  # continuum-cli\n' "$CLI_DIR" >> "$RC"
+    echo "  added $CLI_DIR to PATH in $RC (open a new terminal, or: source $RC)"
+  fi
+fi
+export PATH="$CLI_DIR:$PATH"
 
 # 3) production daemon config (overwrites the dev appsettings that publish copies in)
 mkdir -p "$DAEMON_DIR"
@@ -270,3 +289,7 @@ echo "MCP 'continuum' registered (user scope). Start a NEW claude session to use
 echo "Room runner is hosted inside the daemon — list local agents in $INSTALL_DIR/rooms/agents.json:"
 echo '  [ { "name": "GeonoAI", "path": "/Users/you/proj/GeonoAI" } ]'
 echo "Backfill of ~/.claude begins immediately; watch it at $BACKEND"
+echo
+echo "CLI installed: $CLI_DIR/continuum"
+echo "  continuum doctor                 verify this machine end to end"
+echo "  continuum setup-relay <repo>     enable room relaying for one repo (run once per repo)"

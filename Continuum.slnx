@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Continuum.Cli/Continuum.Cli.csproj" />
     <Project Path="src/Continuum.Client/Continuum.Client.csproj" />
     <Project Path="src/Continuum.Core/Continuum.Core.csproj" />
     <Project Path="src/Continuum.Daemon/Continuum.Daemon.csproj" />
