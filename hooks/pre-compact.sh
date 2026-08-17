@@ -10,8 +10,16 @@ SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty')
 TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty')
 [ -z "$SESSION_ID" ] && exit 0
 
-BACKEND="${CONTINUUM_BACKEND:-http://localhost:5000}"
-TOKEN="${CONTINUUM_TOKEN:-dev-local-token-change-me}"
+# Config: env first, then ~/.continuum/config.json (see session-start.sh for why the localhost
+# default was worse than doing nothing).
+CONFIG="$HOME/.continuum/config.json"
+BACKEND="${CONTINUUM_BACKEND:-}"
+TOKEN="${CONTINUUM_TOKEN:-}"
+if [ -f "$CONFIG" ]; then
+  [ -z "$BACKEND" ] && BACKEND=$(jq -r '.backend // empty' "$CONFIG" 2>/dev/null || true)
+  [ -z "$TOKEN" ] && TOKEN=$(jq -r '.token // empty' "$CONFIG" 2>/dev/null || true)
+fi
+{ [ -z "$BACKEND" ] || [ -z "$TOKEN" ]; } && exit 0
 
 # Pull the last few user/assistant text turns from the transcript, if available.
 TAIL=""

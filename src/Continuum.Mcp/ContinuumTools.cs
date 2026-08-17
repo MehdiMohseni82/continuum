@@ -45,7 +45,11 @@ public static class ContinuumTools
         if (hits.Count == 0) return "No relevant memories.";
         var sb = new StringBuilder();
         foreach (var m in hits)
-            sb.Append("- [").Append(m.Type).Append(m.Score is { } sc ? $" {sc:0.00}" : "").Append("] ").AppendLine(m.Content);
+            // Invariant culture: the machine's locale was rendering the score as "0,75". Tool output
+            // is read by a model, not a person in a locale, so a comma decimal is just wrong here.
+            sb.Append("- [").Append(m.Type)
+              .Append(m.Score is { } sc ? $" {sc.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" : "")
+              .Append("] ").AppendLine(m.Content);
         return sb.ToString();
     }
 

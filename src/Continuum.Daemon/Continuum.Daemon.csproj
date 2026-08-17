@@ -5,6 +5,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Continuum.Daemon-9b37e6fd-4e30-42b3-8862-dd41dbd04c27</UserSecretsId>
+
+    <!--
+      These ship to user machines and are launched with the installed runtime, not a bundled one.
+      Without this, a machine whose .NET is newer than net9.0 refuses to start them: default
+      roll-forward will not cross a major version. Seen on macOS with only .NET 10 installed.
+    -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <ItemGroup>

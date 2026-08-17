@@ -52,6 +52,19 @@ echo "Publishing daemon + MCP..."
 "$DOTNET" publish "$REPO/src/Continuum.Daemon" -c Release -o "$DAEMON_DIR" --nologo >/dev/null
 "$DOTNET" publish "$REPO/src/Continuum.Mcp"    -c Release -o "$MCP_DIR"    --nologo >/dev/null
 
+# 2b) One config file every Continuum piece can read. The hooks and the `continuum` CLI look here
+# when CONTINUUM_BACKEND/CONTINUUM_TOKEN aren't exported — previously they silently fell back to
+# localhost and swallowed the error, producing a session with no memory and no explanation.
+mkdir -p "$HOME/.continuum"
+cat > "$HOME/.continuum/config.json" <<JSON
+{
+  "backend": "$BACKEND",
+  "token": "$TOKEN",
+  "machine": "$MACHINE"
+}
+JSON
+chmod 600 "$HOME/.continuum/config.json"
+
 # 3) production daemon config (overwrites the dev appsettings that publish copies in)
 mkdir -p "$DAEMON_DIR"
 CURSOR="$DAEMON_DIR/continuum-cursors.db"
@@ -68,6 +81,27 @@ cat > "$DAEMON_DIR/appsettings.json" <<JSON
   }
 }
 JSON
+chmod 600 "$DAEMON_DIR/appsettings.json"
+
+# The room runner reads this path unconditionally (DaemonOptions.cs hardcodes ~/Continuum/rooms,
+# ignoring --install-dir), and nothing has ever created it. Seed it with every key it accepts —
+# the old printed example omitted runtime/write/role, so users had to read C# to find them.
+ROOMS_DIR="$HOME/Continuum/rooms"
+mkdir -p "$ROOMS_DIR"
+if [ ! -f "$ROOMS_DIR/agents.json" ]; then
+  cat > "$ROOMS_DIR/agents.json" <<'JSON'
+[
+  {
+    "name": "example-agent",
+    "path": "/absolute/path/to/a/repo",
+    "runtime": "claude",
+    "write": false,
+    "role": "consultant"
+  }
+]
+JSON
+  echo "  seeded $ROOMS_DIR/agents.json (edit it, then the daemon picks it up next cycle)"
+fi
 
 # 4) auto-start WITH self fail-over
 DAEMON_DLL="$DAEMON_DIR/Continuum.Daemon.dll"
@@ -121,22 +155,41 @@ fi
 # 5) register the MCP server at user scope (all projects)
 echo "Registering MCP server..."
 MCP_DLL="$MCP_DIR/Continuum.Mcp.dll"
-claude mcp remove continuum -s user >/dev/null 2>&1 || true
-claude mcp add continuum --scope user -e CONTINUUM_BACKEND="$BACKEND" -e CONTINUUM_TOKEN="$TOKEN" -- dotnet "$MCP_DLL" >/dev/null
+# Guarded: this used to abort the whole script under `set -e` if the claude CLI was missing, after
+# the daemon was already installed and before Codex/Cursor were wired — a half-installed machine.
+if command -v claude >/dev/null 2>&1; then
+  claude mcp remove continuum -s user >/dev/null 2>&1 || true
+  if claude mcp add continuum --scope user -e CONTINUUM_BACKEND="$BACKEND" -e CONTINUUM_TOKEN="$TOKEN" -- dotnet "$MCP_DLL" >/dev/null 2>&1; then
+    echo "  claude: registered"
+  else
+    echo "  claude: registration FAILED — run 'claude mcp add' by hand (see hooks/README.md)" >&2
+  fi
+else
+  echo "  claude: CLI not on PATH — skipped (install it, then re-run this script)" >&2
+fi
 
 # 5c) wire the Continuum MCP into Codex + Cursor too, so those runtimes can join rooms as agents.
 echo "Wiring Continuum MCP into Codex + Cursor..."
 CODEX_CFG="$HOME/.codex/config.toml"
 mkdir -p "$(dirname "$CODEX_CFG")"
-if ! { [ -f "$CODEX_CFG" ] && grep -q '\[mcp_servers.continuum\]' "$CODEX_CFG"; }; then
-  cat >> "$CODEX_CFG" <<TOML
+# Idempotent: the old version appended only when the block was absent, so re-running with a new
+# token left the stale one in place and the machine kept authenticating as whoever it was before.
+if [ -f "$CODEX_CFG" ] && grep -q '^\[mcp_servers\.continuum\]' "$CODEX_CFG"; then
+  # Drop the existing block (from its header to the next header or EOF), then re-append.
+  awk '
+    /^\[mcp_servers\.continuum\]/ { skip = 1; next }
+    /^\[/ { skip = 0 }
+    !skip { print }
+  ' "$CODEX_CFG" > "$CODEX_CFG.tmp" && mv "$CODEX_CFG.tmp" "$CODEX_CFG"
+fi
+cat >> "$CODEX_CFG" <<TOML
 
 [mcp_servers.continuum]
 command = "dotnet"
 args = ["$MCP_DLL"]
 env = { CONTINUUM_BACKEND = "$BACKEND", CONTINUUM_TOKEN = "$TOKEN" }
 TOML
-fi
+chmod 600 "$CODEX_CFG"
 CURSOR_CFG="$HOME/.cursor/mcp.json"
 mkdir -p "$(dirname "$CURSOR_CFG")"
 if command -v python3 >/dev/null 2>&1; then
@@ -160,6 +213,50 @@ elif [ ! -f "$CURSOR_CFG" ]; then
 JSON
 else
   echo "  (install python3 or edit $CURSOR_CFG to add the 'continuum' MCP server)"
+fi
+[ -f "$CURSOR_CFG" ] && chmod 600 "$CURSOR_CFG"
+
+# 5d) Claude Code hooks — SessionStart (inject memory) and PreCompact (auto-checkpoint).
+# This script never did this; registering them was a manual settings.json edit documented in
+# hooks/README.md, which meant almost nobody had memory injected. Copies the scripts to a stable
+# location so the settings entry doesn't point into a git clone that may move.
+echo "Installing Claude Code hooks..."
+HOOK_DIR="$HOME/.continuum/hooks"
+mkdir -p "$HOOK_DIR"
+cp "$REPO/hooks/session-start.sh" "$REPO/hooks/pre-compact.sh" "$HOOK_DIR/"
+chmod +x "$HOOK_DIR"/*.sh
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$HOME/.claude/settings.json" "$HOOK_DIR" <<'PY'
+import json, os, sys
+path, hook_dir = sys.argv[1], sys.argv[2]
+os.makedirs(os.path.dirname(path), exist_ok=True)
+
+cfg = {}
+if os.path.exists(path):
+    try:
+        cfg = json.load(open(path))
+    except Exception:
+        # Never destroy a settings file we can't parse — bail loudly instead.
+        print("  settings.json is not valid JSON; skipped hook registration", file=sys.stderr)
+        raise SystemExit(0)
+
+hooks = cfg.setdefault("hooks", {})
+for event, script in (("SessionStart", "session-start.sh"), ("PreCompact", "pre-compact.sh")):
+    cmd = f"{hook_dir}/{script}"
+    groups = hooks.setdefault(event, [])
+    # Merge, never replace: the Windows installer uses Add-Member -Force here and wipes out every
+    # hook the user had registered for the event. Drop only our own previous entry.
+    groups = [g for g in groups
+              if not any("continuum" in (h.get("command") or "") for h in g.get("hooks", []))]
+    groups.append({"matcher": "*", "hooks": [{"type": "command", "command": cmd, "timeout": 20}]})
+    hooks[event] = groups
+
+json.dump(cfg, open(path, "w"), indent=2)
+print("  registered SessionStart + PreCompact")
+PY
+else
+  echo "  (no python3 — add SessionStart/PreCompact by hand, see hooks/README.md)" >&2
 fi
 
 # 6) verify
