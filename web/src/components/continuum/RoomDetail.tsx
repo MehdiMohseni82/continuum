@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/modal";
 import type { RoomDetail, AgentDto, BusMessage } from "@/lib/continuum";
 
 // Stable-ish color per agent name so speakers are easy to tell apart.
-const PALETTE = ["text-brand-500", "text-success-600", "text-orange-500", "text-blue-light-500", "text-error-500"];
+const PALETTE = ["text-accent-ink", "text-[#25a878]", "text-orange-500", "text-blue-light-500", "text-[#ee6572]"];
 function colorFor(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -42,11 +42,11 @@ function CopyBlock({ code, className = "" }: { code: string; className?: string 
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative">
-      <pre className={`max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-gray-200 bg-gray-50 p-3 pr-14 font-mono text-[12px] leading-relaxed text-gray-800 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200 ${className}`}>{code}</pre>
+      <pre className={`max-h-72 overflow-auto whitespace-pre-wrap rounded-card border border-line bg-stripe p-3 pr-14 font-mono text-[12px] leading-relaxed text-gray-800 dark:border-line dark:bg-gray-950 dark:text-gray-200 ${className}`}>{code}</pre>
       <button
         type="button"
         onClick={() => navigator.clipboard.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {})}
-        className="absolute right-2 top-2 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 shadow-sm transition-colors hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-brand-400"
+        className="absolute right-2 top-2 rounded-control border border-line bg-white px-2 py-1 text-[11px] font-medium text-gray-600 shadow-sm transition-colors hover:text-accent-ink dark:border-line dark:bg-gray-800 dark:text-gray-300 dark:hover:text-accent-ink"
       >
         {copied ? "Copied ✓" : "Copy"}
       </button>
@@ -177,7 +177,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
     const name = token.slice(1);
     if (memberNames.has(name) || name === meName) {
       return (
-        <span key={key} className="rounded bg-brand-50 px-1 font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+        <span key={key} className="rounded bg-accent-tint px-1 font-medium text-accent-ink dark:bg-accent/15 dark:text-accent-ink">
           {token}
         </span>
       );
@@ -198,7 +198,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
       if (at > last) out.push(text.slice(last, at));
       if (m[1]) {
         out.push(
-          <code key={key} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[12px] text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+          <code key={key} className="rounded bg-stripe px-1 py-0.5 font-mono text-[12px] text-gray-800 dark:bg-gray-800 dark:text-gray-100">
             {tok.slice(1, -1)}
           </code>,
         );
@@ -209,7 +209,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
       } else if (m[4]) {
         const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(tok);
         out.push(
-          <a key={key} href={link![2]} target="_blank" rel="noreferrer" className="text-brand-500 underline hover:text-brand-600">
+          <a key={key} href={link![2]} target="_blank" rel="noreferrer" className="text-accent-ink underline hover:text-accent-ink">
             {renderInline(link![1], key)}
           </a>,
         );
@@ -381,22 +381,22 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
   return (
     // Chat-first: one card fills the viewport; only the transcript scrolls. Meta lives in the drawer + modal.
-    <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+    <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-card bg-surface shadow-card">
       {/* Header bar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800 sm:px-5">
-        <Link href="/rooms" className="text-gray-400 hover:text-brand-500" title="Back to rooms" aria-label="Back to rooms">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 dark:border-line sm:px-5">
+        <Link href="/rooms" className="text-gray-400 hover:text-accent-ink" title="Back to rooms" aria-label="Back to rooms">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </Link>
-        <h2 className="min-w-0 max-w-full truncate text-base font-semibold text-gray-800 dark:text-white/90 sm:text-lg" title={room.name}>{room.name}</h2>
-        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${open
-          ? "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400"
-          : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+        <h2 className="min-w-0 max-w-full truncate text-[14px] font-semibold text-gray-800 dark:text-white/90 sm:text-[15px]" title={room.name}>{room.name}</h2>
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium ${open
+          ? "bg-success-50 text-[#25a878] dark:bg-[#25a878]/15 dark:text-success-400"
+          : "bg-stripe text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
           {open ? "open" : "closed"}
         </span>
-        {open && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-success-500" title="live" />}
+        {open && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#25a878]" title="live" />}
         {room.totalTokens > 0 && (
           <span
-            className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            className="shrink-0 rounded-full bg-stripe px-2.5 py-0.5 text-[11.5px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
             title="Total tokens used by every message in this room"
           >
             {fmtTokens(room.totalTokens)} tok
@@ -409,7 +409,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
               onClick={leadRoom}
               disabled={busy}
               title="Have the server-side Claude agent take a turn now (optionally steer it)"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-brand-300 px-3 text-sm font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10"
+              className="inline-flex h-8 items-center gap-1.5 rounded-control px-3 text-[13px] font-medium text-accent-ink shadow-btn hover:bg-accent-tint disabled:opacity-50"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z" /></svg>
               <span className="hidden sm:inline">Lead</span>
@@ -417,7 +417,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
           )}
           <button
             onClick={() => setConnectOpen(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-sm font-medium text-white hover:bg-brand-600"
+            className="inline-flex h-9 items-center gap-1.5 rounded-control bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-ink"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" /></svg>
             <span className="hidden sm:inline">Connect an agent</span>
@@ -425,11 +425,11 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
           </button>
           <button
             onClick={() => setInfoOpen(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+            className="inline-flex h-9 items-center gap-1.5 rounded-control border border-line px-3 text-[13px] font-medium text-gray-700 hover:bg-stripe dark:border-line dark:text-gray-200 dark:hover:bg-white/5"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></svg>
             Members
-            <span className="rounded-full bg-gray-100 px-1.5 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">{detail.members.length}</span>
+            <span className="rounded-full bg-stripe px-1.5 text-[11.5px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">{detail.members.length}</span>
           </button>
         </div>
       </div>
@@ -438,7 +438,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6">
           {detail.messages.length === 0 ? (
-            <p className="py-16 text-center text-sm text-gray-400">
+            <p className="py-16 text-center text-[13px] text-gray-400">
               No messages yet. {open ? "Connect an agent, or say something below." : "This room is closed."}
             </p>
           ) : (
@@ -446,7 +446,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
               {detail.messages.map((m) => (
                 <div key={m.id}>
                   <div className="mb-0.5 flex items-baseline gap-2">
-                    <span className={`text-sm font-semibold ${colorFor(m.fromAgent)}`}>{m.fromAgent}</span>
+                    <span className={`text-[13px] font-semibold ${colorFor(m.fromAgent)}`}>{m.fromAgent}</span>
                     <span className="text-[11px] text-gray-400">{new Date(m.createdAt).toLocaleTimeString()}</span>
                     {msgTokens(m) != null && (
                       <span
@@ -457,7 +457,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
                       </span>
                     )}
                   </div>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200">{renderBody(m.body)}</p>
+                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-700 dark:text-gray-200">{renderBody(m.body)}</p>
                 </div>
               ))}
               <div ref={bottomRef} />
@@ -468,13 +468,13 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
       {/* Composer — pinned to the bottom, aligned with the reading column. */}
       {open ? (
-        <div className="shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800 sm:px-6">
+        <div className="shrink-0 border-t border-line px-4 py-3 dark:border-line sm:px-6">
           <form onSubmit={sendMessage} className="mx-auto flex max-w-3xl gap-2">
             <select
               value={speakAs}
               onChange={(e) => setSpeakAs(e.target.value)}
               title="Post as yourself, or take over an agent and speak as it"
-              className="h-10 shrink-0 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+              className="h-8 shrink-0 rounded-control border border-line bg-transparent px-2 text-[13px] text-gray-700 focus:border-accent focus:outline-none dark:border-line dark:text-white/90"
             >
               {speakerOptions.map((n) => (
                 <option key={n} value={n}>{n === meName ? `${n} (you)` : `as ${n}`}</option>
@@ -483,15 +483,15 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
             <div className="relative flex-1">
               {/* @mention popup */}
               {mentionOpen && mentionMatches.length > 0 && (
-                <ul className="absolute bottom-11 left-0 z-10 max-h-48 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                <ul className="absolute bottom-11 left-0 z-10 max-h-48 w-64 overflow-y-auto rounded-control border border-line bg-white py-1 shadow-lg dark:border-line dark:bg-gray-900">
                   {mentionMatches.map((n, i) => (
                     <li key={n}>
                       <button
                         type="button"
                         onMouseDown={(e) => { e.preventDefault(); applyMention(n); }}
-                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${i === mentionIdx
-                          ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
-                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/5"}`}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] ${i === mentionIdx
+                          ? "bg-accent-tint text-accent-ink dark:bg-accent/15 dark:text-accent-ink"
+                          : "text-gray-700 hover:bg-stripe dark:text-gray-200 dark:hover:bg-white/5"}`}
                       >
                         <span className={`font-semibold ${colorFor(n)}`}>@{n}</span>
                       </button>
@@ -505,16 +505,16 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
                 onChange={onSayChange}
                 onKeyDown={onSayKeyDown}
                 placeholder={speakAs === meName ? `Message the room as ${meName}… (use @ to mention)` : `Speaking as ${speakAs}… (use @ to mention)`}
-                className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+                className="h-8 w-full rounded-control border border-line bg-transparent px-3 text-[13px] text-gray-800 focus:border-accent focus:outline-none dark:border-line dark:text-white/90"
               />
             </div>
-            <button disabled={busy || !say.trim()} className="h-10 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+            <button disabled={busy || !say.trim()} className="h-8 shrink-0 rounded-control bg-accent px-4 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50">
               Send
             </button>
           </form>
         </div>
       ) : (
-        <div className="shrink-0 border-t border-gray-200 px-6 py-3 text-center text-xs text-gray-400 dark:border-gray-800">
+        <div className="shrink-0 border-t border-line px-6 py-3 text-center text-[11.5px] text-gray-400 dark:border-line">
           This room is closed — agents no longer take turns here.
         </div>
       )}
@@ -525,33 +525,33 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
           className={`absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300 ${infoOpen ? "opacity-100" : "opacity-0"}`}
           onClick={() => setInfoOpen(false)}
         />
-        <aside className={`absolute right-0 top-0 flex h-full w-full max-w-sm transform flex-col border-l border-gray-200 bg-white shadow-xl transition-transform duration-300 ease-out dark:border-gray-800 dark:bg-gray-900 ${infoOpen ? "translate-x-0" : "translate-x-full"}`}>
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">Room info</h3>
+        <aside className={`absolute right-0 top-0 flex h-full w-full max-w-sm transform flex-col border-l border-line bg-white shadow-xl transition-transform duration-300 ease-out dark:border-line dark:bg-gray-900 ${infoOpen ? "translate-x-0" : "translate-x-full"}`}>
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4 dark:border-line">
+            <h3 className="text-[14px] font-semibold text-gray-800 dark:text-white/90">Room info</h3>
             <button onClick={() => setInfoOpen(false)} className="text-gray-400 hover:text-gray-700 dark:hover:text-white" aria-label="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+              <span className="rounded-full bg-accent-tint px-2.5 py-0.5 text-[11.5px] font-medium text-accent-ink dark:bg-accent/15 dark:text-accent-ink">
                 {room.languageMode === "Human" ? (room.language || "Human") : "machine shorthand"}
               </span>
             </div>
-            <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">{room.topic}</p>
+            <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-300">{room.topic}</p>
 
             <div className="mt-6 mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Members</span>
-              <span className="text-xs text-gray-400">{detail.members.length}</span>
+              <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200">Members</span>
+              <span className="text-[11.5px] text-gray-400">{detail.members.length}</span>
             </div>
             <div className="flex flex-col gap-1.5">
               {detail.members.map((m) => (
-                <div key={m.agent} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
-                  <span className={`text-sm font-medium ${colorFor(m.agent)}`}>{m.agent}</span>
-                  {m.machineName && <span className="text-xs text-gray-400">· {m.machineName}</span>}
+                <div key={m.agent} className="flex items-center gap-2 rounded-control bg-stripe px-3 py-2">
+                  <span className={`text-[13px] font-medium ${colorFor(m.agent)}`}>{m.agent}</span>
+                  {m.machineName && <span className="text-[11.5px] text-gray-400">· {m.machineName}</span>}
                 </div>
               ))}
-              {detail.members.length === 0 && <span className="text-xs text-gray-400">No members yet.</span>}
+              {detail.members.length === 0 && <span className="text-[11.5px] text-gray-400">No members yet.</span>}
             </div>
 
             {open && (
@@ -561,12 +561,12 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                   placeholder="Add an agent by name…"
-                  className="h-9 flex-1 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+                  className="h-9 flex-1 rounded-control border border-line bg-transparent px-3 text-[13px] text-gray-800 focus:border-accent focus:outline-none dark:border-line dark:text-white/90"
                 />
                 <datalist id="room-agent-options">
                   {candidates.map((n) => <option key={n} value={n} />)}
                 </datalist>
-                <button disabled={busy} className="h-9 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+                <button disabled={busy} className="h-9 rounded-control bg-accent px-4 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50">
                   Add
                 </button>
               </form>
@@ -576,7 +576,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
               <button
                 onClick={() => { setInfoOpen(false); closeRoom(); }}
                 disabled={busy}
-                className="mt-6 h-9 w-full rounded-lg border border-error-300 text-sm font-medium text-error-500 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:hover:bg-error-500/10"
+                className="mt-6 h-9 w-full rounded-control border border-error-300 text-[13px] font-medium text-[#ee6572] hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:hover:bg-error-500/10"
               >
                 Close room
               </button>
@@ -587,27 +587,27 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
       {/* Connect an agent — modal with Claude Code / Codex setup. */}
       <Modal isOpen={connectOpen} onClose={() => setConnectOpen(false)} className="m-4 max-h-[88vh] w-full max-w-2xl overflow-y-auto p-6">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Connect an agent to this room</h3>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h3 className="text-[15px] font-semibold text-gray-800 dark:text-white/90">Connect an agent to this room</h3>
+        <p className="mt-1 text-[13px] text-gray-500 dark:text-gray-400">
           Wire an agent runtime to Continuum once, then have it join <span className="font-medium text-gray-700 dark:text-gray-200">{room.name}</span> and continue the conversation.
         </p>
 
         {/* Identity + runtime tabs */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 dark:border-gray-700">
+          <div className="inline-flex rounded-control border border-line p-0.5 dark:border-line">
             {(["claude", "codex"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setConnectTab(t)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${connectTab === t
-                  ? "bg-brand-500 text-white"
+                className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${connectTab === t
+                  ? "bg-accent text-white"
                   : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"}`}
               >
                 {t === "claude" ? "Claude Code" : "Codex"}
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <label className="flex items-center gap-2 text-[11.5px] text-gray-500 dark:text-gray-400">
             Post as
             <select
               value={newMode ? "__new__" : cmdIdentity}
@@ -619,7 +619,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
                   setCmdAs(e.target.value);
                 }
               }}
-              className="h-8 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:text-white/90"
+              className="h-8 rounded-control border border-line bg-transparent px-2 text-[13px] text-gray-700 focus:border-accent focus:outline-none dark:border-line dark:text-white/90"
             >
               {detail.members.map((m) => <option key={m.agent} value={m.agent}>{m.agent}</option>)}
               <option value="__new__">＋ New agent…</option>
@@ -629,35 +629,35 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
 
         {/* Introduce a brand-new agent — name + role + responsibility flow into the join prompt below. */}
         {newMode && (
-          <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="mt-3 rounded-card border border-line bg-stripe p-3 dark:border-line dark:bg-surface">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+              <label className="flex flex-col gap-1 text-[11.5px] font-medium text-gray-600 dark:text-gray-300">
                 Agent name
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. Codex-Consult"
-                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm font-normal text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-transparent dark:text-white/90"
+                  className="h-9 rounded-control border border-line bg-white px-3 text-[13px] font-normal text-gray-800 focus:border-accent focus:outline-none dark:border-line dark:bg-transparent dark:text-white/90"
                 />
               </label>
-              <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+              <label className="flex flex-col gap-1 text-[11.5px] font-medium text-gray-600 dark:text-gray-300">
                 Role <span className="font-normal text-gray-400">(optional)</span>
                 <input
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value)}
                   placeholder="e.g. Graph query specialist"
-                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm font-normal text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-transparent dark:text-white/90"
+                  className="h-9 rounded-control border border-line bg-white px-3 text-[13px] font-normal text-gray-800 focus:border-accent focus:outline-none dark:border-line dark:bg-transparent dark:text-white/90"
                 />
               </label>
             </div>
-            <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+            <label className="mt-3 flex flex-col gap-1 text-[11.5px] font-medium text-gray-600 dark:text-gray-300">
               Responsibility <span className="font-normal text-gray-400">(optional — what this agent owns in the conversation)</span>
               <textarea
                 value={newResp}
                 onChange={(e) => setNewResp(e.target.value)}
                 rows={2}
                 placeholder="e.g. Investigate why the Graph path returns fewer records than Studio search, and report findings."
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-transparent dark:text-white/90"
+                className="rounded-control border border-line bg-white px-3 py-2 text-[13px] font-normal text-gray-800 focus:border-accent focus:outline-none dark:border-line dark:bg-transparent dark:text-white/90"
               />
             </label>
             <div className="mt-3 flex items-center gap-2">
@@ -665,7 +665,7 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
                 type="button"
                 onClick={addNewAgent}
                 disabled={busy || !newName.trim()}
-                className="h-9 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                className="h-9 rounded-control bg-accent px-4 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50"
               >
                 Add to room
               </button>
@@ -679,50 +679,50 @@ export default function RoomDetailView({ initial, meName }: { initial: RoomDetai
         {/* Step 1 — connect the MCP server */}
         <div className="mt-5">
           <div className="mb-1.5 flex items-baseline gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold text-white">1</span>
-            <span className="text-sm font-semibold text-gray-800 dark:text-white/90">Connect the Continuum MCP server <span className="font-normal text-gray-400">— once per machine</span></span>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">1</span>
+            <span className="text-[13px] font-semibold text-gray-800 dark:text-white/90">Connect the Continuum MCP server <span className="font-normal text-gray-400">— once per machine</span></span>
           </div>
           {connectTab === "claude" ? (
             <>
-              <p className="mb-2 pl-7 text-xs text-gray-500 dark:text-gray-400">Run in a terminal. Skip if <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">claude mcp list</code> already shows <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">continuum</code>.</p>
+              <p className="mb-2 pl-7 text-[11.5px] text-gray-500 dark:text-gray-400">Run in a terminal. Skip if <code className="rounded bg-stripe px-1 dark:bg-gray-800">claude mcp list</code> already shows <code className="rounded bg-stripe px-1 dark:bg-gray-800">continuum</code>.</p>
               <div className="pl-7"><CopyBlock code={claudeMcpCmd} /></div>
             </>
           ) : (
             <>
-              <p className="mb-2 pl-7 text-xs text-gray-500 dark:text-gray-400">Add this block to <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">~/.codex/config.toml</code>, then restart Codex.</p>
+              <p className="mb-2 pl-7 text-[11.5px] text-gray-500 dark:text-gray-400">Add this block to <code className="rounded bg-stripe px-1 dark:bg-gray-800">~/.codex/config.toml</code>, then restart Codex.</p>
               <div className="pl-7"><CopyBlock code={codexMcpToml} /></div>
             </>
           )}
           <p className="mt-1.5 pl-7 text-[11px] text-gray-400">
-            Replace <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">&lt;your-token&gt;</code> with a personal access token from{" "}
-            <Link href="/settings" className="text-brand-500 hover:underline">Settings &amp; tokens</Link>, and fix the path if your Continuum install isn&apos;t under the default folder.
+            Replace <code className="rounded bg-stripe px-1 dark:bg-gray-800">&lt;your-token&gt;</code> with a personal access token from{" "}
+            <Link href="/settings" className="text-accent-ink hover:underline">Settings &amp; tokens</Link>, and fix the path if your Continuum install isn&apos;t under the default folder.
           </p>
         </div>
 
         {/* Step 2 — join this room */}
         <div className="mt-5">
           <div className="mb-1.5 flex items-baseline gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold text-white">2</span>
-            <span className="text-sm font-semibold text-gray-800 dark:text-white/90">Join this room</span>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">2</span>
+            <span className="text-[13px] font-semibold text-gray-800 dark:text-white/90">Join this room</span>
           </div>
-          <p className="mb-2 pl-7 text-xs text-gray-500 dark:text-gray-400">Paste this into the agent&apos;s chat — it catches up on the channel and keeps posting as <span className="font-medium">{cmdIdentity}</span>.</p>
+          <p className="mb-2 pl-7 text-[11.5px] text-gray-500 dark:text-gray-400">Paste this into the agent&apos;s chat — it catches up on the channel and keeps posting as <span className="font-medium">{cmdIdentity}</span>.</p>
           <div className="pl-7"><CopyBlock code={buildConnectPrompt(cmdIdentity, newMode ? newRole : "", newMode ? newResp : "")} /></div>
         </div>
 
         {/* Step 3 — reusable slash command */}
         <details className="group mt-5">
           <summary className="flex cursor-pointer list-none items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-[11px] font-semibold text-gray-500 dark:border-gray-600 dark:text-gray-400">3</span>
-            <span className="text-sm font-semibold text-gray-800 dark:text-white/90">Optional — save a reusable <code className="rounded bg-gray-100 px-1 text-[12px] dark:bg-gray-800">/continuum-join</code> command</span>
-            <span className="ml-auto text-xs text-gray-400 group-open:hidden">show ▾</span>
-            <span className="ml-auto hidden text-xs text-gray-400 group-open:inline">hide ▴</span>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold text-gray-500 shadow-hairline dark:text-gray-400">3</span>
+            <span className="text-[13px] font-semibold text-gray-800 dark:text-white/90">Optional — save a reusable <code className="rounded bg-stripe px-1 text-[12px] dark:bg-gray-800">/continuum-join</code> command</span>
+            <span className="ml-auto text-[11.5px] text-gray-400 group-open:hidden">show ▾</span>
+            <span className="ml-auto hidden text-[11.5px] text-gray-400 group-open:inline">hide ▴</span>
           </summary>
           <div className="mt-2 pl-7">
-            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-              Save this file as <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">{connectTab === "claude" ? claudeCmdPath : codexCmdPath}</code>:
+            <p className="mb-2 text-[11.5px] text-gray-500 dark:text-gray-400">
+              Save this file as <code className="rounded bg-stripe px-1 dark:bg-gray-800">{connectTab === "claude" ? claudeCmdPath : codexCmdPath}</code>:
             </p>
             <CopyBlock code={slashCommandFile} />
-            <p className="mt-3 mb-2 text-xs text-gray-500 dark:text-gray-400">Then, in any session, run:</p>
+            <p className="mt-3 mb-2 text-[11.5px] text-gray-500 dark:text-gray-400">Then, in any session, run:</p>
             <CopyBlock code={slashInvoke} />
           </div>
         </details>

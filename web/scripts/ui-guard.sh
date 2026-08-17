@@ -33,6 +33,7 @@ CONVERTED=(
   "src/components/continuum/ChangePassword.tsx"
   "src/app/(admin)/users/page.tsx"
   "src/components/continuum/UserManager.tsx"
+  "src/components/continuum/RoomDetail.tsx"
   "src/layout/AppSidebar.tsx"
   "src/layout/AppHeader.tsx"
 )
