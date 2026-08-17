@@ -99,7 +99,7 @@ export default function CommandPalette() {
       onMouseDown={close}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900"
+        className="w-full max-w-xl overflow-hidden rounded-card bg-surface shadow-overlay"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <input
@@ -111,26 +111,26 @@ export default function CommandPalette() {
           }}
           onKeyDown={onInputKey}
           placeholder="Jump to a page, or ask / search your history…"
-          className="w-full border-b border-gray-100 bg-transparent px-5 py-4 text-base text-gray-800 placeholder:text-gray-400 focus:outline-none dark:border-gray-800 dark:text-white/90"
+          className="w-full border-b border-line bg-transparent px-5 py-4 text-[14px] text-gray-800 placeholder:text-gray-400 focus:outline-none dark:border-line dark:text-white/90"
         />
         <ul className="max-h-80 overflow-y-auto py-2">
-          {results.length === 0 && <li className="px-5 py-6 text-center text-sm text-gray-400">No matches.</li>}
+          {results.length === 0 && <li className="px-5 py-6 text-center text-[13px] text-gray-400">No matches.</li>}
           {results.map((d, i) => (
             <li key={d.path}>
               <button
                 onMouseEnter={() => setActive(i)}
                 onClick={() => go(d)}
-                className={`flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left text-sm ${
-                  i === active ? "bg-brand-50 dark:bg-brand-500/10" : ""
+                className={`flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left text-[13px] ${
+                  i === active ? "bg-accent-tint dark:bg-accent/10" : ""
                 }`}
               >
                 <span className="font-medium text-gray-800 dark:text-white/90">{d.label}</span>
-                <span className="text-xs text-gray-400">{d.hint}</span>
+                <span className="text-[11.5px] text-gray-400">{d.hint}</span>
               </button>
             </li>
           ))}
         </ul>
-        <div className="flex items-center gap-4 border-t border-gray-100 px-5 py-2.5 text-xs text-gray-400 dark:border-gray-800">
+        <div className="flex items-center gap-4 border-t border-line px-5 py-2.5 text-[11.5px] text-gray-400 dark:border-line">
           <span>↑↓ navigate</span>
           <span>↵ open</span>
           <span>esc close</span>
