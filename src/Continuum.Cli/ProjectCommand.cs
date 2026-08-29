@@ -181,6 +181,7 @@ public static class ProjectCommand
         {
             case HttpStatusCode.NoContent:
                 Console.WriteLine($"Backend: moved '{old.DisplayName}' ({old.SessionCount} session(s)) onto '{key}'.");
+                await CarryDisplayNameAsync(api, old, was, key, ct);
                 Console.WriteLine("Commit the marker file and the same repo on any other machine joins this workspace.");
                 return 0;
             case HttpStatusCode.Conflict:
@@ -193,6 +194,24 @@ public static class ProjectCommand
                 Console.Error.WriteLine($"Backend: re-key failed ({(int)status} {status}). The marker is written.");
                 return 1;
         }
+    }
+
+    /// <summary>
+    /// A workspace's display name defaults to its project key and stays that way until someone edits it.
+    /// After a re-key, an untouched one still reads as the old key — a path that now names nothing, shown
+    /// on every session and memory the workspace owns. Carry it across, but never overwrite a chosen name.
+    /// </summary>
+    private static async Task CarryDisplayNameAsync(
+        Api api, WorkspaceDto old, string was, string key, CancellationToken ct)
+    {
+        if (old.DisplayName != was) return;   // somebody named this; leave it alone
+
+        var status = await api.PatchAsync(
+            $"/api/workspaces/{old.Id}/display-name", new RenameWorkspaceRequest(key), ct);
+
+        Console.WriteLine(status == HttpStatusCode.NoContent
+            ? $"        and renamed it to '{key}' (it was still showing the old key)."
+            : $"        note: it is still displayed as '{was}' — rename it in the web UI.");
     }
 
     /// <summary>A plausible key to offer: the folder name, with its parent when that reads like an org.</summary>

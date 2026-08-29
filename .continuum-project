@@ -1,0 +1,4 @@
+# Continuum: the workspace this repo's sessions belong to.
+# Committed on purpose — it is what makes memory follow the repo between machines
+# instead of being derived from wherever the checkout happens to sit on disk.
+DotNetTalk/Continuum
