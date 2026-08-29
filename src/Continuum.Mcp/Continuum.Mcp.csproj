@@ -5,6 +5,13 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!--
+      These ship to user machines and are launched with the installed runtime, not a bundled one.
+      Without this, a machine whose .NET is newer than net9.0 refuses to start them: default
+      roll-forward will not cross a major version. Seen on macOS with only .NET 10 installed.
+    -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <ItemGroup>

@@ -39,6 +39,23 @@ public static class ApiEndpoints
             return await history.RenameWorkspaceAsync(id, req.DisplayName, ct) ? Results.NoContent() : Results.NotFound();
         });
 
+        // Adopt a different project key, carrying the workspace's history with it. This is the
+        // migration step for a repo taking on a committed .continuum-project marker: without it,
+        // declaring a key would silently start a second, empty workspace beside the real one.
+        api.MapPatch("/workspaces/{id:guid}/project-key", async (
+            Guid id, RekeyWorkspaceRequest req, ICurrentUser me, HistoryService history, CancellationToken ct) =>
+        {
+            if (!me.IsAdmin) return Results.Forbid();
+            return await history.RekeyWorkspaceAsync(id, req.ProjectKey, ct) switch
+            {
+                RekeyResult.Ok => Results.NoContent(),
+                RekeyResult.NotFound => Results.NotFound(),
+                RekeyResult.Conflict => Results.Conflict(
+                    "Another workspace already uses that project key."),
+                _ => Results.BadRequest("ProjectKey is required."),
+            };
+        });
+
         api.MapGet("/sessions", async (
             HistoryService history, CancellationToken ct,
             Guid? workspaceId, string? q, SessionStatus? status, int skip = 0, int take = 50) =>

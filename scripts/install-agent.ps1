@@ -9,8 +9,10 @@
 
 .NOTES
   Run from the repo root (or anywhere; it locates the repo from its own path). Requires .NET 9 SDK,
-  and the `claude` CLI for MCP registration. No admin needed (uses the per-user Startup folder).
+  PowerShell 7+ (`pwsh`), and the `claude` CLI for MCP registration. No admin needed (uses the
+  per-user Startup folder).
 #>
+#Requires -Version 7.0
 param(
   [Parameter(Mandatory = $true)][string]$Token,
   [string]$BackendUrl = "https://continuum.dotnet-talk.com",
@@ -22,6 +24,7 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 $daemonDir = Join-Path $InstallDir "daemon"
 $mcpDir    = Join-Path $InstallDir "mcp"
+$cliDir    = Join-Path $env:USERPROFILE ".continuum\bin"
 $dotnet    = (Get-Command dotnet).Source
 
 Write-Host "Continuum agent install" -ForegroundColor Cyan
@@ -36,10 +39,26 @@ Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
 
-# 2) publish daemon + mcp
-Write-Host "Publishing daemon + MCP..." -ForegroundColor Cyan
+# 2) publish daemon + mcp + the `continuum` CLI
+Write-Host "Publishing daemon + MCP + CLI..." -ForegroundColor Cyan
 dotnet publish (Join-Path $repo "src\Continuum.Daemon") -c Release -o $daemonDir --nologo | Out-Null
 dotnet publish (Join-Path $repo "src\Continuum.Mcp")    -c Release -o $mcpDir    --nologo | Out-Null
+dotnet publish (Join-Path $repo "src\Continuum.Cli")    -c Release -o $cliDir    --nologo | Out-Null
+
+# 2b) One config file every Continuum piece reads. The hooks and the CLI look here when
+# CONTINUUM_BACKEND/CONTINUUM_TOKEN aren't set; without it they fall back to localhost silently.
+New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE ".continuum") | Out-Null
+@{ backend = $BackendUrl; token = $Token; machine = $MachineName; agent = $MachineName } |
+  ConvertTo-Json | Out-File (Join-Path $env:USERPROFILE ".continuum\config.json") -Encoding utf8
+
+# 2c) Put `continuum` on PATH for this user. The slash commands invoke it by bare name so they
+# survive Claude settings sync between machines — which only works if PATH actually resolves it.
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath -notlike "*$cliDir*") {
+  [Environment]::SetEnvironmentVariable("Path", "$cliDir;$userPath", "User")
+  Write-Host "  added $cliDir to your user PATH (open a new terminal to pick it up)" -ForegroundColor DarkGray
+}
+$env:Path = "$cliDir;$env:Path"
 
 # 3) production daemon config (overwrites the dev appsettings that publish copies in)
 $cursor = (Join-Path $daemonDir "continuum-cursors.db").Replace('\','\\')
@@ -99,16 +118,34 @@ $mcpDll = Join-Path $mcpDir "Continuum.Mcp.dll"
 claude mcp remove continuum -s user 2>&1 | Out-Null
 claude mcp add continuum --scope user -e CONTINUUM_BACKEND=$BackendUrl -e CONTINUUM_TOKEN=$Token -- dotnet $mcpDll | Out-Null
 
-# 5b) install the SessionStart hook (auto-register on the bus + inject memory)
-Write-Host "Installing SessionStart hook..." -ForegroundColor Cyan
-$hookScript = Join-Path $InstallDir "session-start.ps1"
-Copy-Item (Join-Path $repo "hooks\session-start.ps1") $hookScript -Force
+# 5b) install the SessionStart + PreCompact hooks (inject memory, auto-checkpoint before compaction)
+Write-Host "Installing Claude Code hooks..." -ForegroundColor Cyan
+$hookDir = Join-Path $env:USERPROFILE ".continuum\hooks"
+New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+Copy-Item (Join-Path $repo "hooks\session-start.ps1") (Join-Path $hookDir "session-start.ps1") -Force
+if (Test-Path (Join-Path $repo "hooks\pre-compact.ps1")) {
+  Copy-Item (Join-Path $repo "hooks\pre-compact.ps1") (Join-Path $hookDir "pre-compact.ps1") -Force
+}
+
 $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
-$settings = if (Test-Path $settingsPath) { Get-Content $settingsPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
-if (-not $settings.PSObject.Properties['hooks']) { $settings | Add-Member hooks ([pscustomobject]@{}) }
-$hookCmd = "powershell -NoProfile -File `"$hookScript`""
-$entry = [pscustomobject]@{ matcher = '*'; hooks = @([pscustomobject]@{ type = 'command'; command = $hookCmd; timeout = 20 }) }
-$settings.hooks | Add-Member SessionStart @($entry) -Force   # replaces any prior Continuum SessionStart
+New-Item -ItemType Directory -Force -Path (Split-Path $settingsPath) | Out-Null
+$settings = if (Test-Path $settingsPath) { Get-Content $settingsPath -Raw | ConvertFrom-Json -AsHashtable } else { @{} }
+if (-not $settings.ContainsKey('hooks')) { $settings['hooks'] = @{} }
+
+foreach ($h in @(
+    @{ Event = 'SessionStart'; Script = 'session-start.ps1' },
+    @{ Event = 'PreCompact';   Script = 'pre-compact.ps1'   })) {
+  $script = Join-Path $hookDir $h.Script
+  if (-not (Test-Path $script)) { continue }
+  $cmd = "powershell -NoProfile -File `"$script`""
+  # MERGE, never replace. This used to be `Add-Member <Event> @($entry) -Force`, which overwrote the
+  # whole array and destroyed every hook the user had registered for that event. Drop only ours.
+  $kept = @(@($settings['hooks'][$h.Event]) | Where-Object {
+      $_ -and -not (@($_['hooks']) | Where-Object { "$($_['command'])" -like '*continuum*' })
+    })
+  $entry = @{ matcher = '*'; hooks = @(@{ type = 'command'; command = $cmd; timeout = 20 }) }
+  $settings['hooks'][$h.Event] = @($kept) + @($entry)
+}
 $settings | ConvertTo-Json -Depth 12 | Out-File $settingsPath -Encoding utf8
 
 # 5c) wire the Continuum MCP into Codex and Cursor too, so those runtimes can join rooms as agents.

@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Continuum.Cli\Continuum.Cli.csproj" />
     <ProjectReference Include="..\..\src\Continuum.Core\Continuum.Core.csproj" />
   </ItemGroup>
 

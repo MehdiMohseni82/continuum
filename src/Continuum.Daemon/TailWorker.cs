@@ -1,6 +1,9 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Continuum.Core.Contracts;
+using Continuum.Core.Domain;
 using Continuum.Core.Ingest;
 using Microsoft.Extensions.Options;
 
@@ -18,7 +21,17 @@ public sealed class TailWorker(
     BackendClient backend) : BackgroundService
 {
     private const int ReadWindow = 8 * 1024 * 1024; // cap bytes read per file per tick
+    private const int CwdScanLines = 200;           // how far into a transcript to look for its cwd
+
     private readonly DaemonOptions _opt = options.Value;
+
+    /// <summary>
+    /// Project directory name → the working directory its sessions ran in, recovered from the
+    /// transcripts themselves. The mangled directory name can't be reversed (every non-alphanumeric
+    /// character became the same dash), but each transcript records its own <c>cwd</c>.
+    /// A directory's cwd never changes, so this is cached for the life of the process.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string?> _cwdByProjectDir = new();
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -57,7 +70,6 @@ public sealed class TailWorker(
 
     private async Task ProcessFileAsync(string projectsDir, string file, CancellationToken ct)
     {
-        var (sessionId, projectKey) = Identify(projectsDir, file);
         var offset = cursors.GetOffset(file);
 
         FileStream fs;
@@ -83,6 +95,10 @@ public sealed class TailWorker(
 
             var lastNl = Array.LastIndexOf(buffer, (byte)'\n');
             if (lastNl < 0) return;                  // no complete line yet
+
+            // Resolved only once there is something to send: an idle tree is the common case, and
+            // this reaches the filesystem for the repo's .continuum-project marker.
+            var (sessionId, projectKey) = Identify(projectsDir, file);
 
             var events = new List<IngestEvent>();
             var start = 0;
@@ -114,14 +130,64 @@ public sealed class TailWorker(
         }
     }
 
-    private static (Guid SessionId, string ProjectKey) Identify(string projectsDir, string file)
+    private (Guid SessionId, string ProjectKey) Identify(string projectsDir, string file)
     {
         var rel = Path.GetRelativePath(projectsDir, file);
-        var projectKey = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+        var projectDir = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+
+        // A repo may declare its own key so the same checkout on another machine lands in the same
+        // workspace. The cwd is cached (it can't change), but the marker is read afresh every time:
+        // adding the file should take effect on the next tick, not on the next daemon restart.
+        // A null cwd is not cached — a transcript that named none says nothing about the next one.
+        if (!_cwdByProjectDir.TryGetValue(projectDir, out var cwd) || cwd is null)
+        {
+            cwd = ReadCwd(file);
+            if (cwd is not null) _cwdByProjectDir[projectDir] = cwd;
+        }
+
+        var projectKey = ProjectKey.Resolve(cwd, projectDir);
 
         var name = Path.GetFileNameWithoutExtension(file);
         var sessionId = Guid.TryParse(name, out var g) ? g : DeterministicGuid(file);
         return (sessionId, projectKey);
+    }
+
+    /// <summary>
+    /// The working directory a transcript ran in, taken from the first line that records one, or null
+    /// if the head of the file names none. Only the head is scanned: <c>cwd</c> appears within the
+    /// first handful of entries, and a transcript can be hundreds of megabytes.
+    /// </summary>
+    private string? ReadCwd(string file)
+    {
+        try
+        {
+            var seen = 0;
+            foreach (var line in File.ReadLines(file))
+            {
+                if (++seen > CwdScanLines) break;
+                if (line.Length == 0 || !line.Contains("\"cwd\"", StringComparison.Ordinal)) continue;
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object
+                        && doc.RootElement.TryGetProperty("cwd", out var cwd)
+                        && cwd.ValueKind == JsonValueKind.String
+                        && cwd.GetString() is { Length: > 0 } value)
+                        return value;
+                }
+                catch (JsonException)
+                {
+                    // Half-written or malformed line; the next one will do.
+                }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogDebug("Could not read cwd from {File}", Path.GetFileName(file));
+        }
+
+        return null;
     }
 
     private static Guid DeterministicGuid(string s) =>

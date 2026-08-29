@@ -25,8 +25,10 @@ All four phases are implemented and verified end-to-end:
 | `src/Continuum.Host` | ASP.NET Core: ingest/query/memory/bus API **and** the Blazor Server UI |
 | `src/Continuum.Daemon` | Worker service: tails `~/.claude/projects/**/*.jsonl`, uploads, resumable cursors |
 | `src/Continuum.Mcp` | C# MCP server (stdio) exposing 15 tools to Claude Code |
-| `tests/Continuum.Tests` | Parser, redaction, embedding, and hand-off tests |
-| `hooks/` | `session-start.sh`, `pre-compact.sh` + registration docs |
+| `src/Continuum.Client` | Shared contracts + turn logic, with no package dependencies |
+| `src/Continuum.Cli` | The `continuum` command: `doctor`, `rooms`, `setup-relay`, `join`/`leave`, and the room relay Stop hook |
+| `tests/Continuum.Tests` | Parser, redaction, embedding, hand-off, and relay-transcript tests |
+| `hooks/` | `session-start.*`, `pre-compact.*` + registration docs |
 
 ## Design decisions (locked)
 
