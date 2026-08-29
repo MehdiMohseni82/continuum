@@ -59,6 +59,37 @@ public sealed class HistoryService(ContinuumDbContext db, IEmbedder embedder, IA
         return updated > 0;
     }
 
+    /// <summary>
+    /// Point a workspace at a different project key, taking every session and memory it owns with it —
+    /// they hang off the workspace id, not the key.
+    /// <para>
+    /// This is what makes a <c>.continuum-project</c> marker safe to adopt on a repo that already has
+    /// history: without it, declaring a key would start an empty second workspace and strand
+    /// everything the old one had learned.
+    /// </para>
+    /// </summary>
+    public async Task<RekeyResult> RekeyWorkspaceAsync(Guid id, string projectKey, CancellationToken ct)
+    {
+        var key = ProjectKey.Sanitize(projectKey);
+        if (key is null) return RekeyResult.Invalid;
+
+        // Same authority as renaming: a workspace is shared, so re-keying it is an owner's act.
+        var workspace = await db.Workspaces
+            .Where(policy.ControlledWorkspaces())
+            .FirstOrDefaultAsync(w => w.Id == id, ct);
+        if (workspace is null) return RekeyResult.NotFound;
+        if (workspace.ProjectKey == key) return RekeyResult.Ok;   // already there; nothing to do
+
+        // The unique index would catch this, but as a 500. Say what actually happened instead.
+        var taken = await db.Workspaces.AnyAsync(
+            w => w.OrgId == workspace.OrgId && w.ProjectKey == key && w.Id != id, ct);
+        if (taken) return RekeyResult.Conflict;
+
+        workspace.ProjectKey = key;
+        await db.SaveChangesAsync(ct);
+        return RekeyResult.Ok;
+    }
+
     public async Task<IReadOnlyList<WorkspaceDto>> WorkspacesAsync(CancellationToken ct)
     {
         // Counted by grouping the visible sessions rather than a nested Count() per workspace: the

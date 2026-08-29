@@ -29,7 +29,21 @@ try {
         if (Test-Path $nameFile) { $agent = (Get-Content $nameFile -Raw).Trim() }
     }
     if (-not $agent) { $agent = $base }
+    # The derived key encodes an absolute path, so the same repo on Windows and on a Mac would be two
+    # separate workspaces with two disjoint piles of memory. A repo can declare its own key in a
+    # committed .continuum-project file so every machine agrees. Mirrors Continuum.Core.Domain.ProjectKey.
     $projectKey = if ($cwd) { ($cwd -replace '[^A-Za-z0-9]', '-') } else { "" }
+    if ($cwd) {
+        $marker = Join-Path $cwd ".continuum-project"
+        if (Test-Path $marker) {
+            try {
+                $declared = Get-Content $marker -ErrorAction Stop |
+                    Where-Object { $_.Trim() -and -not $_.Trim().StartsWith('#') } |
+                    Select-Object -First 1
+                if ($declared) { $projectKey = $declared.Trim() }
+            } catch { }
+        }
+    }
     $headers = @{ Authorization = "Bearer $token" }
 
     # 1) register this session as a bus agent (best-effort)
@@ -41,7 +55,10 @@ try {
     # 2) pull remembered context
     $ctx = ""
     try {
-        $r = Invoke-RestMethod -Uri "$backend/api/context/session-start?projectKey=$projectKey" -Headers $headers -TimeoutSec 8
+        # Escaped, not interpolated: a declared key may contain '/', spaces or '&', unlike the
+        # alphanumeric-and-dash key derived from a path.
+        $qs = [System.Uri]::EscapeDataString($projectKey)
+        $r = Invoke-RestMethod -Uri "$backend/api/context/session-start?projectKey=$qs" -Headers $headers -TimeoutSec 8
         $ctx = $r.additionalContext
     } catch {}
 

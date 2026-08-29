@@ -28,7 +28,18 @@ fi
 AUTH="Authorization: Bearer $TOKEN"
 
 # Claude Code names project dirs by replacing every non-alphanumeric char in the cwd with '-'.
+# That name encodes an absolute path, so the same repo on a Mac and on Windows would be two separate
+# workspaces with two disjoint piles of memory. A repo can instead declare its own key in a committed
+# .continuum-project file, and then every machine agrees. Mirrors Continuum.Core.Domain.ProjectKey.
 PROJECT_KEY=$(printf '%s' "$CWD" | sed -E 's/[^A-Za-z0-9]/-/g')
+MARKER="$CWD/.continuum-project"
+if [ -n "$CWD" ] && [ -f "$MARKER" ]; then
+  DECLARED=$(sed -e 's/\r$//' "$MARKER" 2>/dev/null \
+    | grep -vE '^[[:space:]]*(#|$)' \
+    | head -1 \
+    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true)
+  [ -n "$DECLARED" ] && PROJECT_KEY="$DECLARED"
+fi
 
 # Stable per-project agent name: CONTINUUM_AGENT env -> .continuum-agent file -> folder name.
 BASENAME=$(basename "$CWD" 2>/dev/null || echo session)

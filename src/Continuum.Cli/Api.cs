@@ -81,6 +81,17 @@ public sealed class Api : IDisposable
         return await res.Content.ReadFromJsonAsync<T>(Json, ct);
     }
 
+    /// <summary>
+    /// PATCH, returning the status rather than throwing: callers here need to tell "conflict" from
+    /// "forbidden" and say something useful about each.
+    /// </summary>
+    public async Task<HttpStatusCode> PatchAsync(string path, object body, CancellationToken ct = default)
+    {
+        using var content = JsonContent.Create(body, options: Json);
+        var res = await _http.PatchAsync(path, content, ct);
+        return res.StatusCode;
+    }
+
     /// <summary>Fire-and-forget: used where a failure genuinely doesn't matter (membership on join).</summary>
     public async Task TryPostAsync(string path, object body, CancellationToken ct = default)
     {

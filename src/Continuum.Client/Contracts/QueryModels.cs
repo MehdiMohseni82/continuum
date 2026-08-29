@@ -6,6 +6,19 @@ public sealed record WorkspaceDto(Guid Id, string ProjectKey, string DisplayName
 
 public sealed record RenameWorkspaceRequest(string DisplayName);
 
+/// <summary>Adopt a new project key for an existing workspace, carrying all of its history with it.</summary>
+public sealed record RekeyWorkspaceRequest(string ProjectKey);
+
+/// <summary>Outcome of a re-key: the key is unique, so it can already belong to someone else.</summary>
+public enum RekeyResult
+{
+    Ok,
+    NotFound,
+    /// <summary>Another workspace already answers to that key; merging the two is a separate act.</summary>
+    Conflict,
+    Invalid,
+}
+
 public sealed record SessionSummaryDto(
     Guid Id,
     string? Title,
