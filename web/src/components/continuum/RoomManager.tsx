@@ -1,19 +1,46 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import type { RoomDto, LanguageMode } from "@/lib/continuum";
+import type { RoomDto, LanguageMode, RoomProposal, WorkspaceDto } from "@/lib/continuum";
+import DraftRoomChat from "./DraftRoomChat";
 import { Card, Chip, TAG } from "@/components/bui";
 import { Empty, Section } from "@/components/bui/page";
 import { Input, Select, Textarea, Field, FormRow } from "@/components/bui/form";
 
-export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] }) {
+export default function RoomManager({
+  initialRooms,
+  workspaces = [],
+}: {
+  initialRooms: RoomDto[];
+  workspaces?: WorkspaceDto[];
+}) {
   const [rooms, setRooms] = useState(initialRooms);
   const [open, setOpen] = useState(initialRooms.length === 0);
+  const [drafting, setDrafting] = useState(false);
   const [form, setForm] = useState({
     name: "", topic: "", languageMode: "Human" as LanguageMode, language: "English", systemPrompt: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function useDraft(p: RoomProposal) {
+    // The done-criteria is folded into the system prompt rather than dropped: the prompt is the only
+    // text an agent reads when it joins, so a finish line kept anywhere else is a finish line the
+    // agents never see.
+    const prompt = p.doneCriteria
+      ? `${p.systemPrompt}\n\nDone when: ${p.doneCriteria}`
+      : p.systemPrompt;
+
+    setForm({
+      name: p.name,
+      topic: p.topic,
+      languageMode: p.languageMode,
+      language: p.language || "English",
+      systemPrompt: prompt,
+    });
+    setDrafting(false);
+    setOpen(true);
+  }
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -43,18 +70,28 @@ export default function RoomManager({ initialRooms }: { initialRooms: RoomDto[] 
       <Section
         title={`Rooms · ${rooms.length}`}
         actions={
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink"
-          >
-            {open ? "Cancel" : "New room"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setDrafting((d) => !d); setOpen(false); }}
+              className="rounded-control border border-line px-3 py-1.5 text-[13px] hover:bg-stripe"
+            >
+              {drafting ? "Cancel" : "Draft from a spec"}
+            </button>
+            <button
+              onClick={() => { setOpen((o) => !o); setDrafting(false); }}
+              className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink"
+            >
+              {open ? "Cancel" : "New room"}
+            </button>
+          </div>
         }
       >
         {/*
           The form used to sit permanently open above the list, three full-width boxes deep, so the
           rooms themselves started below the fold. It now folds away unless there is nothing to show.
         */}
+        {drafting && <DraftRoomChat workspaces={workspaces} onAccept={useDraft} />}
+
         {open && (
           <Card className="mb-3 flex flex-col gap-3">
             <form onSubmit={create} className="flex flex-col gap-3">

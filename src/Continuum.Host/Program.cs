@@ -54,6 +54,12 @@ if (serverAgentOptions.HasKey())
         builder.Services.AddHostedService<ServerAgentWorker>();
 }
 
+// Room drafting picks the Claude completer when one is registered above, else the self-hosted one.
+// Registered unconditionally so the feature exists on every deployment; only its quality varies.
+builder.Services.AddScoped<RoomDraftCompleter>(sp =>
+    new RoomDraftCompleter(sp.GetService<AnthropicChatCompleter>()));
+builder.Services.AddScoped<RoomDraftService>();
+
 builder.Services.Configure<ExtractionOptions>(builder.Configuration.GetSection("Extraction"));
 builder.Services.AddScoped<MemoryExtractionService>();
 builder.Services.AddScoped<RagService>();

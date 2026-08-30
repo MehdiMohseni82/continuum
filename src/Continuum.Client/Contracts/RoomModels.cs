@@ -40,3 +40,43 @@ public sealed record RoomDetailDto(
     IReadOnlyList<RoomMemberDto> Members,
     IReadOnlyList<MessageDto> Messages,
     IReadOnlyList<RoomUserTokensDto>? TokensByUser = null);
+
+// --- room drafting: turn a specification document into a room worth opening ---
+
+/// <summary>One turn of the drafting conversation, as the browser has it.</summary>
+public sealed record RoomDraftTurn(string Role, string Text);
+
+/// <param name="Spec">The specification document, pasted or read from an attached file. Sent once;
+/// afterwards it is carried in the conversation the client replays.</param>
+/// <param name="WorkspaceId">Ground the draft in what Continuum already knows about this project.
+/// Null draws on the document alone.</param>
+public sealed record RoomDraftRequest(
+    string? Spec,
+    IReadOnlyList<RoomDraftTurn> History,
+    Guid? WorkspaceId = null);
+
+/// <summary>An agent the draft says the room needs, and the part it plays.</summary>
+/// <param name="Role">implementer or consultant — an implementer changes code, a consultant reviews.</param>
+/// <param name="Write">Whether this agent is expected to modify the repo.</param>
+public sealed record ProposedAgent(string Name, string Role, bool Write, string Responsibility);
+
+/// <summary>A room the assistant is proposing. Every field is editable before anything is created.</summary>
+public sealed record RoomProposal(
+    string Name,
+    string Topic,
+    string SystemPrompt,
+    string DoneCriteria,
+    IReadOnlyList<ProposedAgent> Agents,
+    LanguageMode LanguageMode = LanguageMode.Human,
+    string? Language = "English");
+
+/// <param name="Reply">What the assistant says back — always present, so the chat never stalls.</param>
+/// <param name="Proposal">Null until it has enough to propose something concrete.</param>
+/// <param name="Sources">What it drew on from memory and history, so the draft is auditable.</param>
+/// <param name="Model">Which model drafted this. Surfaced because a 7B local model and Claude
+/// produce visibly different briefs, and you should know which one you are reading.</param>
+public sealed record RoomDraftResponse(
+    string Reply,
+    RoomProposal? Proposal,
+    IReadOnlyList<RagSource> Sources,
+    string Model);

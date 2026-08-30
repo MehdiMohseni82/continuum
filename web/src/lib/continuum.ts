@@ -150,6 +150,17 @@ export type RoomDto = {
 export type RoomMemberDto = { agent: string; machineName: string | null; joinedAt: string };
 export type RoomDetail = { room: RoomDto; members: RoomMemberDto[]; messages: BusMessage[] };
 
+// --- room drafting: a specification document in, a room worth opening out ---
+export type RoomDraftTurn = { role: "user" | "assistant"; text: string };
+export type ProposedAgent = { name: string; role: string; write: boolean; responsibility: string };
+export type RoomProposal = {
+  name: string; topic: string; systemPrompt: string; doneCriteria: string;
+  agents: ProposedAgent[]; languageMode: LanguageMode; language: string | null;
+};
+export type RoomDraftResponse = {
+  reply: string; proposal: RoomProposal | null; sources: RagSource[]; model: string;
+};
+
 export type ModelUsage = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; costUsd: number };
 export type LabeledCost = { label: string; costUsd: number; tokens: number };
 export type TokenStats = {
