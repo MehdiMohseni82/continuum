@@ -85,9 +85,8 @@ export default function DraftRoomChat({
   const empty = turns.length === 0;
 
   return (
-    <Card className="mb-3 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[13px] font-medium text-gray-800 dark:text-white/90">Draft from a specification</span>
         {model && <Chip>{model}</Chip>}
         <div className="ml-auto flex items-center gap-2">
           <Select value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)}>
@@ -210,6 +209,6 @@ export default function DraftRoomChat({
           {error && <p className="text-[12px] text-[#ee6572]">{error}</p>}
         </div>
       </form>
-    </Card>
+    </div>
   );
 }

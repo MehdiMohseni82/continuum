@@ -16,7 +16,7 @@ export default function RoomManager({
 }) {
   const [rooms, setRooms] = useState(initialRooms);
   const [open, setOpen] = useState(initialRooms.length === 0);
-  const [drafting, setDrafting] = useState(false);
+  const [mode, setMode] = useState<"draft" | "write">("draft");
   const [form, setForm] = useState({
     name: "", topic: "", languageMode: "Human" as LanguageMode, language: "English", systemPrompt: "",
   });
@@ -38,7 +38,7 @@ export default function RoomManager({
       language: p.language || "English",
       systemPrompt: prompt,
     });
-    setDrafting(false);
+    setMode("write");
     setOpen(true);
   }
 
@@ -70,30 +70,49 @@ export default function RoomManager({
       <Section
         title={`Rooms · ${rooms.length}`}
         actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setDrafting((d) => !d); setOpen(false); }}
-              className="rounded-control border border-line px-3 py-1.5 text-[13px] hover:bg-stripe"
-            >
-              {drafting ? "Cancel" : "Draft from a spec"}
-            </button>
-            <button
-              onClick={() => { setOpen((o) => !o); setDrafting(false); }}
-              className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink"
-            >
-              {open ? "Cancel" : "New room"}
-            </button>
-          </div>
+          <button
+            onClick={() => { setOpen((o) => !o); setMode("draft"); }}
+            className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink"
+          >
+            {open ? "Cancel" : "New room"}
+          </button>
         }
       >
         {/*
           The form used to sit permanently open above the list, three full-width boxes deep, so the
           rooms themselves started below the fold. It now folds away unless there is nothing to show.
         */}
-        {drafting && <DraftRoomChat workspaces={workspaces} onAccept={useDraft} />}
-
         {open && (
           <Card className="mb-3 flex flex-col gap-3">
+            {/*
+              Drafting used to sit behind a second, quieter button beside "New room". Nobody found it:
+              the obvious action opened the same four empty boxes it always had, so the feature read as
+              missing. It is now the first tab of the one flow, and the default — describing what you
+              want is a better starting point than an empty Name field, and writing it yourself is
+              always one click away.
+            */}
+            <div className="flex items-center gap-1 border-b border-line pb-2">
+              {(["draft", "write"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={
+                    mode === m
+                      ? "rounded-control bg-stripe px-3 py-1.5 text-[13px] font-medium text-gray-800 dark:text-white/90"
+                      : "rounded-control px-3 py-1.5 text-[13px] text-gray-500 hover:bg-stripe dark:text-gray-400"
+                  }
+                >
+                  {m === "draft" ? "Draft from a spec" : "Write it yourself"}
+                </button>
+              ))}
+            </div>
+
+            {mode === "draft" && (
+              <DraftRoomChat workspaces={workspaces} onAccept={useDraft} />
+            )}
+
+            {mode === "write" && (
             <form onSubmit={create} className="flex flex-col gap-3">
               <FormRow>
                 <Field label="Name" className="flex-1 min-w-[240px]">
@@ -156,6 +175,7 @@ export default function RoomManager({
                 {error && <p className="text-[12px] text-[#ee6572]">{error}</p>}
               </div>
             </form>
+            )}
           </Card>
         )}
 
