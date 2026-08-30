@@ -177,6 +177,11 @@ public static class ApiEndpoints
         api.MapGet("/handoffs", async (BusService bus, CancellationToken ct, string? status) =>
             Results.Ok(await bus.ListHandoffsAsync(status, ct)));
 
+        // Draft a room from a specification document, conversationally. Returns a proposal the caller
+        // edits and then POSTs to /rooms like any other — this endpoint creates nothing itself.
+        api.MapPost("/rooms/draft", async (RoomDraftRequest req, RoomDraftService draft, CancellationToken ct) =>
+            Results.Ok(await draft.DraftAsync(req with { History = req.History ?? [] }, ct)));
+
         // --- rooms: group conversations, now across people (Phase 8, opened up in Phase 13) ---
         // These were instance-admin only, which predates organizations and made a room something only
         // one person could ever run. Authority now comes from the room itself: its owner administers

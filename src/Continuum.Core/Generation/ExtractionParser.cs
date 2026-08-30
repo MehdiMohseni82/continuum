@@ -61,31 +61,8 @@ public static class ExtractionParser
         return new ExtractionResult(summary, result);
     }
 
-    private static JsonElement? Root(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        var text = Unfence(raw).Trim();
-        var start = text.IndexOfAny(['{', '[']);
-        if (start < 0) return null;
-        text = text[start..];
-        try
-        {
-            using var doc = JsonDocument.Parse(text);
-            return doc.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+    // Shared with RoomDraftParser — see LlmJson.
+    private static JsonElement? Root(string? raw) => LlmJson.Root(raw);
 
-    private static string Unfence(string s)
-    {
-        if (!s.Contains("```")) return s;
-        var lines = s.Split('\n');
-        return string.Join('\n', lines.Where(l => !l.TrimStart().StartsWith("```")));
-    }
-
-    private static string? GetString(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static string? GetString(JsonElement e, string name) => LlmJson.GetString(e, name);
 }

@@ -18,11 +18,21 @@ public sealed class OllamaChatCompleter(HttpClient http, GenerationOptions optio
 {
     public string Model => options.Model;
 
-    public async Task<string> CompleteAsync(string system, string user, bool jsonMode, CancellationToken ct)
+    public Task<string> CompleteAsync(string system, string user, bool jsonMode, CancellationToken ct) =>
+        CompleteChatAsync(system, [new ChatTurn(FromUser: true, user)], jsonMode, ct);
+
+    public async Task<string> CompleteChatAsync(
+        string system, IReadOnlyList<ChatTurn> turns, bool jsonMode, CancellationToken ct)
     {
+        ChatMessage[] messages =
+        [
+            new("system", system),
+            .. turns.Select(t => new ChatMessage(t.FromUser ? "user" : "assistant", t.Text)),
+        ];
+
         var req = new ChatRequest(
             options.Model,
-            [new ChatMessage("system", system), new ChatMessage("user", user)],
+            messages,
             Stream: false,
             Format: jsonMode ? "json" : null,
             Options: new ChatOpts(Temperature: 0.2));

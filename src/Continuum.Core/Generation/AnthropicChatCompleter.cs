@@ -23,7 +23,11 @@ public sealed class AnthropicChatCompleter : IChatCompleter
 
     public string Model { get; }
 
-    public async Task<string> CompleteAsync(string system, string user, bool jsonMode, CancellationToken ct)
+    public Task<string> CompleteAsync(string system, string user, bool jsonMode, CancellationToken ct) =>
+        CompleteChatAsync(system, [new ChatTurn(FromUser: true, user)], jsonMode, ct);
+
+    public async Task<string> CompleteChatAsync(
+        string system, IReadOnlyList<ChatTurn> turns, bool jsonMode, CancellationToken ct)
     {
         // The Anthropic API constrains JSON via a schema; without one, the closest equivalent to
         // Ollama's free-form "json" mode is a system-prompt instruction. The room path never sets this.
@@ -37,7 +41,11 @@ public sealed class AnthropicChatCompleter : IChatCompleter
             System = system,
             // Room messages are short; low effort keeps latency and cost down.
             OutputConfig = new OutputConfig { Effort = Effort.Low },
-            Messages = [new() { Role = Role.User, Content = user }],
+            Messages = [.. turns.Select(t => new MessageParam
+            {
+                Role = t.FromUser ? Role.User : Role.Assistant,
+                Content = t.Text,
+            })],
         }, ct);
 
         // Claude Opus 5 can decline via a safety classifier (HTTP 200, StopReason "refusal").
