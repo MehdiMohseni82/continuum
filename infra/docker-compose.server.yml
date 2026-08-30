@@ -61,6 +61,16 @@ services:
       Auth__AdminName: "${AUTH_ADMIN_NAME:-Admin}"
       Auth__AuthSecret: "${AUTH_SECRET:-}"
       Auth__SecureCookie: "${AUTH_SECURE_COOKIE:-true}"
+      # Claude API key. Optional: with it unset the host runs exactly as before — generation stays on
+      # self-hosted Ollama and nothing leaves the network. Setting it registers AnthropicChatCompleter,
+      # which room drafting prefers over the 7B local model and which the server-side room agent has
+      # always required (it has never run here, because this variable was never passed through).
+      #
+      # This does NOT start the autonomous room loop. That stays behind ServerAgents__Enabled, which is
+      # false by default and deliberately so: an unattended loop is what ran two agents for 48 hours.
+      ServerAgents__ApiKey: "${ANTHROPIC_API_KEY:-}"
+      ServerAgents__Model: "${SERVER_AGENT_MODEL:-claude-opus-5}"
+      ServerAgents__Enabled: "${SERVER_AGENTS_ENABLED:-false}"
       ASPNETCORE_HTTP_PORTS: "5000"
     ports:
       - "127.0.0.1:5050:5000"
