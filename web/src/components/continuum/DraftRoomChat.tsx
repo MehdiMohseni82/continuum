@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import type { RoomDraftResponse, RoomDraftTurn, RoomProposal, WorkspaceDto } from "@/lib/continuum";
+import type { RoomDraftJob, RoomDraftTurn, RoomProposal, WorkspaceDto } from "@/lib/continuum";
 import { Card, Chip } from "@/components/bui";
 import { Field, Select, Textarea } from "@/components/bui/form";
 
@@ -29,6 +29,7 @@ export default function DraftRoomChat({
   const [proposal, setProposal] = useState<RoomProposal | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [waited, setWaited] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -75,8 +76,13 @@ export default function DraftRoomChat({
     setBusy(true);
     setError(null);
 
+    setWaited(0);
+    const tick = setInterval(() => setWaited((w) => w + 1), 1000);
+
     try {
-      const res = await fetch("/bff/c/rooms/draft", {
+      // Start a job rather than waiting on one long request. A draft can take minutes and Cloudflare
+      // cuts every request at 100 seconds — which is exactly the 524 this replaces.
+      const started = await fetch("/bff/c/rooms/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -88,19 +94,57 @@ export default function DraftRoomChat({
           requireProposal,
         }),
       });
-      if (!res.ok) {
-        setError((await res.text()) || "The drafting service did not respond.");
+      if (!started.ok) {
+        setError(describe(await started.text()));
         return;
       }
-      const data: RoomDraftResponse = await res.json();
-      setModel(data.model);
-      setTurns([...next, { role: "assistant", text: data.reply }]);
-      if (data.proposal) setProposal(data.proposal);
+      const { jobId }: RoomDraftJob = await started.json();
+
+      // Poll until it settles. The server gives up at six minutes; stop a little after that so a
+      // wedged model surfaces as a message rather than a spinner that never ends.
+      const deadline = Date.now() + 7 * 60_000;
+      for (;;) {
+        if (Date.now() > deadline) {
+          setError("Drafting timed out. Try a shorter specification.");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+
+        const polled = await fetch(`/bff/c/rooms/draft/${jobId}`, { cache: "no-store" });
+        if (!polled.ok) {
+          setError(describe(await polled.text()));
+          return;
+        }
+        const job: RoomDraftJob = await polled.json();
+
+        if (job.status === "failed") {
+          setError(job.error || "Drafting failed.");
+          return;
+        }
+        if (job.status === "done" && job.result) {
+          const data = job.result;
+          setModel(data.model);
+          setTurns([...next, { role: "assistant", text: data.reply }]);
+          if (data.proposal) setProposal(data.proposal);
+          return;
+        }
+      }
     } catch {
       setError("The drafting service could not be reached.");
     } finally {
+      clearInterval(tick);
       setBusy(false);
     }
+  }
+
+  /**
+   * Server errors reach here as whatever the proxy chose to send, which for a gateway timeout is a
+   * full HTML page. Dumping that into the error line is how a 524 came to fill the panel with markup.
+   */
+  function describe(body: string) {
+    const text = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (!text) return "The drafting service did not respond.";
+    return text.length > 200 ? text.slice(0, 200) + "…" : text;
   }
 
   const empty = turns.length === 0;
@@ -180,7 +224,11 @@ export default function DraftRoomChat({
             </div>
           ))
         )}
-        {busy && <p className="text-[12px] text-gray-400">Drafting…</p>}
+        {busy && (
+          <p className="text-[12px] text-gray-400">
+            Drafting… {waited}s{waited > 45 && " — a local model on a long document takes a while"}
+          </p>
+        )}
       </div>
 
       {proposal && (

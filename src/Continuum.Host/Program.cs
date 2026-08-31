@@ -59,6 +59,8 @@ if (serverAgentOptions.HasKey())
 builder.Services.AddScoped<RoomDraftCompleter>(sp =>
     new RoomDraftCompleter(sp.GetService<AnthropicChatCompleter>()));
 builder.Services.AddScoped<RoomDraftService>();
+// Singleton: it owns the in-flight job table, which must outlive the request that queued a draft.
+builder.Services.AddSingleton<RoomDraftJobs>();
 
 builder.Services.Configure<ExtractionOptions>(builder.Configuration.GetSection("Extraction"));
 builder.Services.AddScoped<MemoryExtractionService>();
