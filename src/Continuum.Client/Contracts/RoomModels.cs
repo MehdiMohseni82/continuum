@@ -73,6 +73,13 @@ public sealed record RoomProposal(
     LanguageMode LanguageMode = LanguageMode.Human,
     string? Language = "English");
 
+/// <summary>
+/// A queued draft. Drafting can outlast any proxy's request timeout, so the client starts a job and
+/// polls it — see RoomDraftJobs.
+/// </summary>
+/// <param name="Status">running, done, or failed.</param>
+public sealed record RoomDraftJobDto(Guid JobId, string Status, RoomDraftResponse? Result, string? Error);
+
 /// <param name="Reply">What the assistant says back — always present, so the chat never stalls.</param>
 /// <param name="Proposal">Null until it has enough to propose something concrete.</param>
 /// <param name="Sources">What it drew on from memory and history, so the draft is auditable.</param>

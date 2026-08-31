@@ -160,6 +160,11 @@ export type RoomProposal = {
 export type RoomDraftResponse = {
   reply: string; proposal: RoomProposal | null; sources: RagSource[]; model: string;
 };
+// Drafting is queued and polled: it can outlast any proxy's request timeout.
+export type RoomDraftJob = {
+  jobId: string; status: "running" | "done" | "failed";
+  result: RoomDraftResponse | null; error: string | null;
+};
 
 export type ModelUsage = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; costUsd: number };
 export type LabeledCost = { label: string; costUsd: number; tokens: number };

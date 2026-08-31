@@ -179,8 +179,19 @@ public static class ApiEndpoints
 
         // Draft a room from a specification document, conversationally. Returns a proposal the caller
         // edits and then POSTs to /rooms like any other — this endpoint creates nothing itself.
-        api.MapPost("/rooms/draft", async (RoomDraftRequest req, RoomDraftService draft, CancellationToken ct) =>
-            Results.Ok(await draft.DraftAsync(req with { History = req.History ?? [] }, ct)));
+        //
+        // Two steps, not one: a draft can take minutes, and Cloudflare cuts every request at 100
+        // seconds. Queue it, then poll. Both halves return immediately.
+        api.MapPost("/rooms/draft", (RoomDraftRequest req, RoomDraftJobs jobs) =>
+        {
+            var id = jobs.Start(req with { History = req.History ?? [] });
+            return Results.Ok(new RoomDraftJobDto(id, "running", null, null));
+        });
+
+        api.MapGet("/rooms/draft/{jobId:guid}", (Guid jobId, RoomDraftJobs jobs) =>
+            jobs.Get(jobId) is { } job
+                ? Results.Ok(job)
+                : Results.NotFound("No such draft job — it may have expired."));
 
         // --- rooms: group conversations, now across people (Phase 8, opened up in Phase 13) ---
         // These were instance-admin only, which predates organizations and made a room something only

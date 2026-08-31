@@ -25,7 +25,10 @@ public sealed class RoomDraftService(
     IChatCompleter chat,
     RoomDraftCompleter drafting)
 {
-    private const int MaxSpecChars = 60_000;
+    // A local 7B spends real time just reading its input, and drafting already sits near every proxy's
+    // patience. A specification long enough to hit this cap has said what it needs to in the first
+    // quarter; the truncation is announced to the model so it does not invent what it cannot see.
+    private const int MaxSpecChars = 24_000;
     private const int MaxHistoryTurns = 24;
 
     private const string System = """
