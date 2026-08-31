@@ -14,9 +14,12 @@ import { Field, Select, Textarea } from "@/components/bui/form";
 export default function DraftRoomChat({
   workspaces,
   onAccept,
+  onWriteInstead,
 }: {
   workspaces: WorkspaceDto[];
   onAccept: (p: RoomProposal) => void;
+  /** Leave for the manual form, carrying whatever the draft got as far as. */
+  onWriteInstead: (seed: { name: string; topic: string }) => void;
 }) {
   const [turns, setTurns] = useState<RoomDraftTurn[]>([]);
   const [input, setInput] = useState("");
@@ -35,6 +38,18 @@ export default function DraftRoomChat({
     setError(null);
     try {
       const text = await file.text();
+      // A .docx or .pdf reads as binary noise here, which the model then dutifully hallucinates
+      // around. Detect it and say so, rather than drafting from garbage.
+      const sample = text.slice(0, 4000);
+      // eslint-disable-next-line no-control-regex
+      const binary = /[\u0000-\u0008\u000E-\u001F]/.test(sample);
+      if (binary || !text.trim()) {
+        setError(
+          `${file.name} isn't plain text, so it can't be read here. Export it as Markdown or ` +
+            `plain text, or copy the text into the box below.`,
+        );
+        return;
+      }
       setSpec(text);
       setSpecName(`${file.name} · ${Math.round(text.length / 1000)}k chars`);
     } catch {
@@ -43,11 +58,16 @@ export default function DraftRoomChat({
     e.target.value = "";
   }
 
-  async function send(e?: React.FormEvent) {
+  async function send(e?: React.FormEvent, requireProposal = false) {
     e?.preventDefault();
     const text = input.trim();
-    // The first turn can be the document alone — there may be nothing to add to it.
-    if (!text && !(spec && turns.length === 0)) return;
+
+    // Pressing send with nothing to say used to return silently — a dead button with no explanation.
+    // A document alone is a valid first turn, and "propose it now" needs no text at all.
+    if (!text && !spec && !requireProposal && turns.length === 0) {
+      setError("Attach a document or describe what the room should settle.");
+      return;
+    }
 
     const next: RoomDraftTurn[] = text ? [...turns, { role: "user", text }] : [...turns];
     setTurns(next);
@@ -65,6 +85,7 @@ export default function DraftRoomChat({
           spec,
           history: next,
           workspaceId: workspaceId || null,
+          requireProposal,
         }),
       });
       if (!res.ok) {
@@ -83,6 +104,21 @@ export default function DraftRoomChat({
   }
 
   const empty = turns.length === 0;
+
+  /**
+   * What to carry into the manual form when leaving the draft. Not clever — the document's first
+   * heading and the first thing asked for — but it beats handing back four empty boxes after a
+   * conversation, which is what abandoning the draft used to cost.
+   */
+  function seedFromDraft() {
+    const heading = spec
+      ?.split("\n")
+      .find((l) => l.trim().startsWith("#"))
+      ?.replace(/^#+\s*/, "")
+      .trim();
+    const asked = turns.find((t) => t.role === "user")?.text.trim();
+    return { name: heading || "", topic: asked || "" };
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -199,13 +235,39 @@ export default function DraftRoomChat({
             }
           />
         </Field>
-        <div className="flex items-center gap-3">
+        {/*
+          There must always be a way to reach a room. The model — a 7B one especially — will happily
+          ask questions for several turns without ever committing to a proposal, and while it does,
+          nothing on screen creates anything. So: overrule it, or leave and write it by hand. Both
+          carry across what the draft has established.
+        */}
+        <div className="flex flex-wrap items-center gap-3">
           <button
             disabled={busy}
             className="rounded-control bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink disabled:opacity-50"
           >
             {busy ? "Drafting…" : empty ? "Draft a room" : "Send"}
           </button>
+
+          {!proposal && !empty && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void send(undefined, true)}
+              className="rounded-control border border-line px-3 py-1.5 text-[13px] hover:bg-stripe disabled:opacity-50"
+            >
+              Propose the room now
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onWriteInstead(seedFromDraft())}
+            className="text-[12px] text-gray-500 hover:underline dark:text-gray-400"
+          >
+            Write it myself instead
+          </button>
+
           {error && <p className="text-[12px] text-[#ee6572]">{error}</p>}
         </div>
       </form>

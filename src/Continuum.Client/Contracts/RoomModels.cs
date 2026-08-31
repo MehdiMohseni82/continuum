@@ -50,10 +50,13 @@ public sealed record RoomDraftTurn(string Role, string Text);
 /// afterwards it is carried in the conversation the client replays.</param>
 /// <param name="WorkspaceId">Ground the draft in what Continuum already knows about this project.
 /// Null draws on the document alone.</param>
+/// <param name="RequireProposal">Set by "Propose the room now". A model that keeps asking questions
+/// instead of committing leaves the developer with nothing to create, so they can overrule it.</param>
 public sealed record RoomDraftRequest(
     string? Spec,
     IReadOnlyList<RoomDraftTurn> History,
-    Guid? WorkspaceId = null);
+    Guid? WorkspaceId = null,
+    bool RequireProposal = false);
 
 /// <summary>An agent the draft says the room needs, and the part it plays.</summary>
 /// <param name="Role">implementer or consultant — an implementer changes code, a consultant reviews.</param>

@@ -32,12 +32,18 @@ public sealed class RoomDraftService(
         You help a developer turn a project specification into a Continuum "room": a working session in
         which two or more coding agents collaborate on one goal, each in its own repository checkout.
 
-        Your job is to interview them briefly and then propose a room. Ask about what is genuinely
-        ambiguous — the scope boundary, which repos are involved, what "done" means. Ask at most two
-        questions at a time, and do not ask about anything the specification already answers.
+        ALWAYS include a proposal when you have a specification document to work from — in your very first
+        reply, not after a round of questions. You may ask questions alongside it, never instead of it.
+        The developer edits every field before anything is created, so a proposal they correct beats a
+        question they must answer, and a reply with no proposal leaves them nothing to act on.
 
-        Propose a room as soon as you can defend one. The developer edits every field before anything is
-        created, so a concrete proposal they correct beats another round of questions.
+        Ask only about what is genuinely ambiguous — the scope boundary, which repos are involved, what
+        "done" means — at most two questions, and never about anything the document already answers.
+        Where the document is silent, choose something defensible and say what you assumed in "reply".
+
+        Never invent specifics the document does not support. If you do not know the language, framework
+        or directory layout, describe the artifact without naming a path: "a failing test covering the
+        settlement contract", not "a failing test in src/main/java/com/example/payments".
 
         What makes a room work, and what makes one fail:
         - Rooms fail when agents discuss instead of act. A room has run for 48 hours producing nothing
@@ -71,8 +77,8 @@ public sealed class RoomDraftService(
           }
         }
 
-        Omit "proposal" entirely while you are still asking questions. Never return a proposal with only
-        some fields filled in.
+        Omit "proposal" only when you have nothing at all to work from — no document and no description.
+        Never return a proposal with only some fields filled in.
         """;
 
     /// <summary>
@@ -125,10 +131,18 @@ public sealed class RoomDraftService(
         if (!turns[^1].FromUser)
             turns.Add(new ChatTurn(FromUser: true, "Continue — propose the room."));
 
+        // "Propose the room now": the model stalled and the developer is overruling it. A small local
+        // model in particular will keep asking questions well past the point of being useful, and until
+        // it commits to something there is nothing on screen to create.
+        var system = req.RequireProposal
+            ? System + "\n\nThe developer has asked you to propose the room NOW. Your reply MUST contain "
+                     + "a complete proposal. Ask nothing further — state your assumptions in \"reply\" instead."
+            : System;
+
         string raw;
         try
         {
-            raw = await completer.CompleteChatAsync(System, turns, jsonMode: true, ct);
+            raw = await completer.CompleteChatAsync(system, turns, jsonMode: true, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
