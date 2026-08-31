@@ -24,6 +24,16 @@ public static partial class RelayCommand
 {
     private const int PollWindowSeconds = 560;
     private const int NoProgressTurnLimit = 4;
+
+    /// <summary>
+    /// How many times to re-arm the wait when the room is quiet. The poll window cannot simply be made
+    /// longer: it is bounded by the Stop hook's own timeout (600s in the settings that register it), and
+    /// a hook that overruns is killed. So on expiry the relay hands the session a turn that answers
+    /// PASS, which ends, which fires the Stop hook again, which waits afresh.
+    ///
+    /// 40 cycles is a little over six hours of silence before the session is genuinely let go.
+    /// </summary>
+    private const int KeepAliveCycles = 40;
     private const int LargeMessageChars = 8000;
 
     /// <summary>A turn that showed work: a code block, or the vocabulary of a test result.</summary>
@@ -79,7 +89,14 @@ public static partial class RelayCommand
 
             // PASS is the shared silence sentinel (RoomTurn, so daemon and relay agree); `ready` is
             // the relay's own join handshake. Neither is content, so neither goes to the room.
+            //
+            // A keep-alive turn is also never posted, and that is decided by what we asked for rather
+            // than by what came back: IsPass demands the message be exactly "PASS", so a model that
+            // replies "PASS." or "Okay — PASS" would otherwise have its filler posted into the room
+            // every nine minutes. We know we asked for silence; honour that whatever it says.
+            var awaitingKeepAlive = state.AwaitingKeepAlive;
             var skipPost = string.IsNullOrWhiteSpace(mine)
+                           || awaitingKeepAlive
                            || RoomTurn.IsPass(mine)
                            || Transcript.IsReadyHandshake(mine);
 
@@ -102,8 +119,15 @@ public static partial class RelayCommand
             }
 
             // 4. Act-not-talk guard, for repo-backed agents only.
+            //
+            // Skipped for a keep-alive turn. The guard counts turns that discuss without changing
+            // anything, and a PASS we ourselves asked for is neither: left in, four cycles of quiet
+            // (~37 minutes) would trip it and post [DONE] into a room nobody had abandoned.
+            var wasKeepAlive = awaitingKeepAlive;
+            state.AwaitingKeepAlive = false;
+
             var cwd = input?.Cwd;
-            if (!string.IsNullOrWhiteSpace(cwd) && Directory.Exists(Path.Combine(cwd!, ".git")))
+            if (!wasKeepAlive && !string.IsNullOrWhiteSpace(cwd) && Directory.Exists(Path.Combine(cwd!, ".git")))
             {
                 var tree = WorkingTreeSignature(cwd!);
                 var showedWork = mine is not null && (mine.Contains("```") || ShowedWork().IsMatch(mine));
@@ -147,6 +171,9 @@ public static partial class RelayCommand
                     if (m.Id > state.LastSeenId) state.LastSeenId = m.Id;
                     if (m.FromAgent == agent) continue; // skip our own echo
 
+                    // A real message means the room is alive again: start the silence count over.
+                    state.KeepAlives = 0;
+                    state.AwaitingKeepAlive = false;
                     state.Save(statePath);
                     if (RoomTurn.IsDone(m.Body)) { Log($"peer {m.FromAgent} declared [DONE]; stopping"); return 0; }
 
@@ -177,7 +204,27 @@ public static partial class RelayCommand
                 await Task.Delay(TimeSpan.FromSeconds(2), ct);
             }
 
-            Log("poll window elapsed with no peer message; idling");
+            // The room is quiet. Going idle here is what made an agent unreachable: the only delivery
+            // path is this Stop hook, and a session that has stopped ends no more turns, so a message
+            // written afterwards was never seen by anyone. Re-arm instead — hand back a turn that says
+            // PASS, which posts nothing (RoomTurn.IsPass) and brings us straight back here.
+            if (state.KeepAlives < KeepAliveCycles)
+            {
+                state.KeepAlives++;
+                state.AwaitingKeepAlive = true;
+                state.Save(statePath);
+                Log($"poll window elapsed; re-arming (keep-alive {state.KeepAlives}/{KeepAliveCycles})");
+
+                Console.Out.Write(JsonSerializer.Serialize(new
+                {
+                    decision = "block",
+                    reason = "[continuum] Still connected to the room; nothing new was said. "
+                             + "Do not act, do not summarise, do not post. Reply with exactly: PASS",
+                }));
+                return 0;
+            }
+
+            Log($"giving up after {state.KeepAlives} keep-alive cycles of silence; idling");
             state.Save(statePath);
             return 0;
         }
@@ -240,6 +287,12 @@ public sealed class RelayState
     public string? LastPosted { get; set; }
     public string? LastTree { get; set; }
     public int TalkTurns { get; set; }
+
+    /// <summary>Consecutive keep-alive cycles with no peer message. Reset by any real message.</summary>
+    public int KeepAlives { get; set; }
+
+    /// <summary>True when the previous cycle asked for a PASS purely to stay connected.</summary>
+    public bool AwaitingKeepAlive { get; set; }
 
     public static RelayState Load(string path)
     {
