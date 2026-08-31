@@ -109,7 +109,15 @@ export default function RoomManager({
             </div>
 
             {mode === "draft" && (
-              <DraftRoomChat workspaces={workspaces} onAccept={useDraft} />
+              <DraftRoomChat
+                workspaces={workspaces}
+                onAccept={useDraft}
+                onWriteInstead={(seed) => {
+                  // Keep whatever the draft established rather than resetting to empty boxes.
+                  setForm((f) => ({ ...f, name: seed.name || f.name, topic: seed.topic || f.topic }));
+                  setMode("write");
+                }}
+              />
             )}
 
             {mode === "write" && (
