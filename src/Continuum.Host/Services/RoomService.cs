@@ -188,6 +188,28 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         return true;
     }
 
+    /// <summary>
+    /// Reopen a closed room, keeping every message it already holds.
+    ///
+    /// <para>
+    /// Closing was one-way, which made the anti-runaway backstop unrecoverable: a room it shut down
+    /// took its whole conversation out of reach, and continuing meant a new room and re-establishing
+    /// context the agents had already built. A backstop you cannot undo is a worse backstop.
+    /// </para>
+    /// </summary>
+    public async Task<bool> ReopenAsync(Guid id, CancellationToken ct)
+    {
+        var room = await FindControlledAsync(id, ct);
+        if (room is null) return false;
+        if (room.Status != "open")
+        {
+            room.Status = "open";
+            room.ClosedAt = null;
+            await db.SaveChangesAsync(ct);
+        }
+        return true;
+    }
+
     /// <summary>Post a message into a room. Returns null if the room is missing/closed.</summary>
     public async Task<MessageDto?> PostAsync(Guid id, string fromAgent, string body, CancellationToken ct,
         int? inputTokens = null, int? outputTokens = null, int? cacheReadTokens = null, int? cacheCreationTokens = null)

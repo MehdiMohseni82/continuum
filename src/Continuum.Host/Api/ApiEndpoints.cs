@@ -229,6 +229,11 @@ public static class ApiEndpoints
             await rooms.CloseAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
         // Agents post here (or via channel_post to the room's channel). Rejected once the room is closed.
+        // Closing was one-way, so a room the autonomous-turn backstop shut down was unrecoverable:
+        // continuing meant a new room and rebuilding context the agents had already established.
+        api.MapPost("/rooms/{id:guid}/reopen", async (Guid id, RoomService rooms, CancellationToken ct) =>
+            await rooms.ReopenAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+
         api.MapPost("/rooms/{id:guid}/post", async (Guid id, RoomPostRequest req, RoomService rooms, CancellationToken ct) =>
         {
             var msg = await rooms.PostAsync(id, req.FromAgent.Trim(), req.Body, ct,
