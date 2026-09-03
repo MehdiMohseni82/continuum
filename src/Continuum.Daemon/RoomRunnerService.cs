@@ -92,6 +92,18 @@ public sealed class RoomRunnerService(
             var lastId = msgs.Count > 0 ? msgs[^1].Id : 0L;
             var streak = RoomTurn.TrailingAgentStreak(msgs.Select(m => m.FromAgent).ToList(), memberSet);
 
+            // Only police rooms this runner actually drives.
+            //
+            // These conditions exist to stop HEADLESS agents this daemon spawns from talking forever —
+            // the 48-hour incident. Applied to every open room, they also shut down rooms driven by
+            // interactive relay sessions, where a person is sitting in the terminal watching each turn
+            // and the relay enforces its own no-progress guard. That is what happened to "Geonosys
+            // Console Application": two agents held a productive 17-minute exchange, hit sixteen turns
+            // with no human message in between, and this closed the room under them — with the runner
+            // driving neither of them, and agents.json still holding nothing but the seeded example.
+            var drivesThisRoom = agents.Any(a => memberSet.Contains(a.Name));
+            if (!drivesThisRoom) continue;
+
             // Room-level terminal conditions (agent-independent): an explicit [DONE], or the autonomous-turn
             // cap reached with no human in the loop. Close the room instead of driving it further.
             var lastBody = msgs.Count > 0 ? msgs[^1].Body : null;

@@ -82,7 +82,8 @@ public static partial class RelayCommand
 
             // 2. Still open? Closing the room in the UI is the documented force-stop.
             var room = await FindRoomAsync(api, roomId, ct);
-            if (room is null || room.Status != "open") { Log("room closed or unreachable; stopping"); return 0; }
+            if (room is null) { Log("could not reach the room (backend error, not a closed room); stopping"); return 0; }
+            if (room.Status != "open") { Log($"room is {room.Status}; stopping"); return 0; }
 
             // 3. My last spoken message, with the token usage of the turn that produced it.
             var (mine, usage) = Transcript.LastAssistantMessage(transcript);
@@ -199,7 +200,8 @@ public static partial class RelayCommand
 
                 // The room can be force-stopped while we wait.
                 var still = await FindRoomAsync(api, roomId, ct);
-                if (still is null || still.Status != "open") { Log("room closed while waiting; stopping"); return 0; }
+                if (still is null) { Log("lost contact with the backend while waiting; stopping"); return 0; }
+                if (still.Status != "open") { Log($"room became {still.Status} while waiting; stopping"); return 0; }
 
                 await Task.Delay(TimeSpan.FromSeconds(2), ct);
             }
