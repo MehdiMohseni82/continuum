@@ -26,6 +26,12 @@ public sealed class BackendClient(HttpClient http)
     public async Task<RoomDetailDto?> GetRoomAsync(Guid id, CancellationToken ct) =>
         await http.GetFromJsonAsync<RoomDetailDto>($"/api/rooms/{id}", Json, ct);
 
+    /// <summary>Messages posted after <paramref name="since"/> — used to confirm whether a turn spoke.</summary>
+    public async Task<IReadOnlyList<MessageDto>> GetRoomMessagesAsync(
+        Guid id, long since, int take, CancellationToken ct) =>
+        await http.GetFromJsonAsync<List<MessageDto>>(
+            $"/api/rooms/{id}/messages?since={since}&take={take}", Json, ct) ?? [];
+
     /// <summary>Best-effort room close (idempotent server-side). Returns false on any non-success — the
     /// caller still stops driving the room, so a failed close never leaves it running.</summary>
     public async Task<bool> CloseRoomAsync(Guid id, CancellationToken ct)

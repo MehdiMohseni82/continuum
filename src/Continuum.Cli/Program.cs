@@ -49,7 +49,7 @@ static int Help(int exitCode, string? error = null)
 
           continuum doctor                     check what is and isn't wired up on this machine
           continuum rooms                      list rooms you can see, with their ids
-          continuum room <room-id>             who is listening, who is behind, and why
+          continuum room <room-id> [--follow]  who is driving it, who is quiet, and why
           continuum project [set <key>]        show, or declare, the workspace this repo belongs to
           continuum setup-relay [dir]          register the relay Stop hook for one folder
           continuum join <room-id> <agent>     join a room in this session (use /continuum-joinroom)

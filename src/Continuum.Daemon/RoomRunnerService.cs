@@ -145,8 +145,32 @@ public sealed class RoomRunnerService(
                 _lastActed[key] = lastId;
                 var prompt = BuildPrompt(agent, room, memberNames, msgs);
                 log.LogInformation("Waking '{Agent}' ({Runtime}) in '{Room}' → {Why}", agent.Name, agent.Runtime, room.Name, decision.Why);
-                _inFlight[agent.Name] = RunTurnAsync(agent, cli, prompt, ct);
+                _inFlight[agent.Name] = RunTurnAsync(agent, cli, prompt, room.Id, lastId, ct);
             }
+        }
+    }
+
+    /// <summary>
+    /// One machine-readable line saying whether this turn produced a message. Written into the agent's
+    /// turn log so `continuum room` can report it without guessing. Never throws: a failed check
+    /// degrades to "unknown", which is honest, rather than to a wrong claim.
+    /// </summary>
+    private async Task<string> DescribeOutcomeAsync(string agent, Guid roomId, long beforeId, CancellationToken ct)
+    {
+        try
+        {
+            var after = await backend.GetRoomMessagesAsync(roomId, beforeId, 50, ct);
+            var mine = after?.LastOrDefault(m =>
+                string.Equals(m.FromAgent, agent, StringComparison.OrdinalIgnoreCase));
+
+            return mine is not null
+                ? $"[continuum] outcome=posted id={mine.Id}"
+                : "[continuum] outcome=no-post";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogDebug("Room runner: could not confirm outcome for '{Agent}': {Msg}", agent, ex.Message);
+            return "[continuum] outcome=unknown";
         }
     }
 
@@ -226,7 +250,8 @@ public sealed class RoomRunnerService(
 
     // ---- spawning a turn ----
 
-    private async Task RunTurnAsync(LocalAgent agent, string cli, string prompt, CancellationToken ct)
+    private async Task RunTurnAsync(
+        LocalAgent agent, string cli, string prompt, Guid roomId, long beforeId, CancellationToken ct)
     {
         var logPath = Path.Combine(_opt.LogDir, $"{agent.Name}.log");
         try
@@ -256,6 +281,13 @@ public sealed class RoomRunnerService(
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
             await proc.WaitForExitAsync(ct);
+
+            // Record what the turn actually did, not just what the agent narrated. Deciding to stay
+            // quiet is the common outcome once every open item is waiting on a person, and it is
+            // indistinguishable from a broken agent unless something states it. Inferring it from
+            // timestamps was wrong within the same minute, so ask the room instead.
+            sb.AppendLine();
+            sb.AppendLine(await DescribeOutcomeAsync(agent.Name, roomId, beforeId, ct));
 
             try { await File.AppendAllTextAsync(logPath, sb.ToString(), ct); } catch { /* best-effort log */ }
         }
