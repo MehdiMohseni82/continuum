@@ -79,6 +79,8 @@ public static partial class RelayCommand
             using var api = new Api(cfg, TimeSpan.FromSeconds(25));
             var statePath = Path.Combine(Config.StateDir, $"{sessionId}.json");
             var state = RelayState.Load(statePath);
+            state.Agent = agent;
+            state.RoomId = roomId.ToString();
 
             // 2. Still open? Closing the room in the UI is the documented force-stop.
             var room = await FindRoomAsync(api, roomId, ct);
@@ -295,6 +297,12 @@ public sealed class RelayState
 
     /// <summary>True when the previous cycle asked for a PASS purely to stay connected.</summary>
     public bool AwaitingKeepAlive { get; set; }
+
+    /// <summary>Which agent and room this session is bound to. Recorded so `continuum room` can say
+    /// who is actually listening without reading every session transcript.</summary>
+    public string? Agent { get; set; }
+
+    public string? RoomId { get; set; }
 
     public static RelayState Load(string path)
     {
