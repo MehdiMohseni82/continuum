@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Continuum.Core.Contracts;
 
 namespace Continuum.Core.Ingest;
@@ -10,7 +11,7 @@ namespace Continuum.Core.Ingest;
 /// Deliberately defensive: it only reaches for fields it recognizes and never throws on an
 /// unexpected shape. An invalid or unknown line is still preserved verbatim so nothing is lost.
 /// </summary>
-public static class JsonlParser
+public static partial class JsonlParser
 {
     private const int MaxExcerpt = 8_000;
 
@@ -22,6 +23,15 @@ public static class JsonlParser
     {
         if (string.IsNullOrWhiteSpace(line))
             return null;
+
+        // Events persist RawJson as jsonb, and Postgres refuses an escaped zero inside a jsonb string
+        // outright — "unsupported Unicode escape sequence". A transcript acquires one honestly: any
+        // session that discusses or tests control characters writes one into its own JSONL. The insert
+        // then throws, the whole batch 500s, the daemon skips that file, and because its cursor never
+        // advances the rest of that session's history is lost for good — silently.
+        //
+        // Stripped here rather than server-side, so the daemon never sends what cannot be stored.
+        line = StripZeroEscapes(line);
 
         JsonElement raw;
         JsonElement root;
@@ -67,6 +77,19 @@ public static class JsonlParser
             Raw = raw,
         };
     }
+
+    /// <summary>
+    /// Replace escaped zero characters in a raw JSONL line, in any casing JSON permits. Substituted
+    /// with U+FFFD rather than deleted, so the text keeps its shape and an excerpt still reads
+    /// sensibly. Guarded by a Contains check: nearly every line pays only a scan.
+    /// </summary>
+    public static string StripZeroEscapes(string line) =>
+        line.Contains("\\u0000", StringComparison.OrdinalIgnoreCase)
+            ? ZeroEscape().Replace(line, "�")
+            : line;
+
+    [GeneratedRegex(@"\\u0000", RegexOptions.IgnoreCase)]
+    private static partial Regex ZeroEscape();
 
     /// <summary>A stable GUID derived from the session and the raw line, for lines with no uuid.</summary>
     public static Guid DeterministicGuid(Guid sessionId, string line)
