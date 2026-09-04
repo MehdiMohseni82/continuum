@@ -66,6 +66,69 @@ public class RoomTurnTests
         Assert.Equal(4, RoomTurn.TrailingAgentStreak(senders, members));
     }
 
+    // ---- mention deadlock ----
+
+    private static readonly string[] Three = ["alice", "bob", "carol"];
+
+    [Fact]
+    public void AnMentionHandsTheFloorToTheNamedMemberOnly()
+    {
+        var recent = Recent(("alice", "@bob what about the contract?"));
+
+        Assert.Equal(RoomTurn.TurnKind.Speak, RoomTurn.Decide("bob", Three, recent, 1, 200).Kind);
+        Assert.Equal(RoomTurn.TurnKind.Skip, RoomTurn.Decide("carol", Three, recent, 1, 200).Kind);
+    }
+
+    [Fact]
+    public void OnceTheNamedMemberHasPassedTheFloorReopens()
+    {
+        // The deadlock this fixes: a three-agent room went silent because the last message named one
+        // agent, that agent had nothing to add, and nobody else was ever allowed to speak again.
+        var recent = Recent(("alice", "@bob what about the contract?"));
+
+        var carol = RoomTurn.Decide("carol", Three, recent, 1, 200, mentionedHaveHadTheirTurn: true);
+        Assert.Equal(RoomTurn.TurnKind.Speak, carol.Kind);
+        Assert.Contains("passed", carol.Why);
+    }
+
+    [Fact]
+    public void AnAgentThatAlreadyPassedDoesNotGetASecondTurn()
+    {
+        var recent = Recent(("alice", "@bob what about the contract?"));
+
+        Assert.Equal(RoomTurn.TurnKind.Skip,
+            RoomTurn.Decide("bob", Three, recent, 1, 200, mentionedHaveHadTheirTurn: true).Kind);
+    }
+
+    [Fact]
+    public void TheAuthorNeverAnswersItself()
+    {
+        var recent = Recent(("alice", "@bob what about the contract?"));
+
+        Assert.Equal(RoomTurn.TurnKind.Skip,
+            RoomTurn.Decide("alice", Three, recent, 1, 200, mentionedHaveHadTheirTurn: true).Kind);
+    }
+
+    [Fact]
+    public void ReopeningNeverOverridesATerminalRoom()
+    {
+        // Done and the cap must still win, or this would turn a backstop into a suggestion.
+        var done = Recent(("alice", "[DONE] shipped"));
+        Assert.Equal(RoomTurn.TurnKind.Done,
+            RoomTurn.Decide("carol", Three, done, 1, 200, mentionedHaveHadTheirTurn: true).Kind);
+
+        var capped = Recent(("alice", "@bob ping"));
+        Assert.Equal(RoomTurn.TurnKind.Exhausted,
+            RoomTurn.Decide("carol", Three, capped, 200, 200, mentionedHaveHadTheirTurn: true).Kind);
+    }
+
+    [Fact]
+    public void MentionedMembersResolvesOnlyRealMembers()
+    {
+        var found = RoomTurn.MentionedMembers("@bob and @nobody and @CAROL", Three);
+        Assert.Equal(new[] { "bob", "carol" }, found.OrderBy(x => x).ToArray());
+    }
+
     // ---- decision ----
 
     private static readonly string[] Members = ["alice", "bob"];

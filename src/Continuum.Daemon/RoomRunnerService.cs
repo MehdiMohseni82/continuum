@@ -125,7 +125,16 @@ public sealed class RoomRunnerService(
                     _inFlight.TryRemove(agent.Name, out _);
                 }
 
-                var decision = RoomTurn.Decide(agent.Name, memberNames, recent, streak, _opt.MaxAutonomousTurns);
+                // Have the members this message named already taken their turn on it? If so the floor
+                // reopens to everyone; otherwise the room deadlocks the moment an addressed agent has
+                // nothing to add. _lastActed is the record of who has already been spawned for this
+                // exact tail message.
+                var addressed = RoomTurn.MentionedMembers(lastBody, memberNames);
+                var mentionedDone = addressed.Count > 0 && addressed.All(a =>
+                    _lastActed.TryGetValue(a + " " + room.Id, out var v) && v == lastId);
+
+                var decision = RoomTurn.Decide(
+                    agent.Name, memberNames, recent, streak, _opt.MaxAutonomousTurns, mentionedDone);
                 if (!decision.IsTurn) continue;
 
                 // Give each agent one attempt per tail-message state, so an agent that chooses to stay silent

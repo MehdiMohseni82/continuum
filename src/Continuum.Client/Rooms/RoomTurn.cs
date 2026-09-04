@@ -76,7 +76,8 @@ public static partial class RoomTurn
         IReadOnlyList<string> memberNames,
         IReadOnlyList<(string From, string Body)> recent,
         int trailingAgentStreak,
-        int maxAutonomousTurns)
+        int maxAutonomousTurns,
+        bool mentionedHaveHadTheirTurn = false)
     {
         if (recent.Count == 0)
             return memberNames.Count > 0 && memberNames[0] == name
@@ -99,12 +100,38 @@ public static partial class RoomTurn
             .Select(v => memberNames.FirstOrDefault(nm => string.Equals(nm, v, StringComparison.OrdinalIgnoreCase)))
             .Where(nm => nm is not null).Select(nm => nm!).ToList();
 
-        if (mentioned.Count > 0)
+        // An @mention hands the floor to the named members, so two others are not talking over the
+        // answer. But it must not hand it over permanently: if the named members have already had
+        // their turn on this message and said nothing, holding everyone else back deadlocks the room.
+        // That is exactly how a three-agent room went silent with plenty still to say — the last
+        // message named one agent, that agent passed, and nobody was ever allowed to speak again.
+        if (mentioned.Count > 0 && !mentionedHaveHadTheirTurn)
             return mentioned.Contains(name)
                 ? new(TurnKind.Speak, $"answer @mention from {last.From}")
                 : new(TurnKind.Skip, "");
 
-        return new(TurnKind.Speak, $"respond to {last.From}");
+        if (mentioned.Count > 0 && mentioned.Contains(name))
+            return new(TurnKind.Skip, "");   // already had its turn on this message
+
+        return new(TurnKind.Speak, mentioned.Count > 0
+            ? $"the agent(s) {last.From} addressed have passed; open to the room"
+            : $"respond to {last.From}");
+    }
+
+    /// <summary>
+    /// The room members a message @mentions. Exposed so a driver can tell whether the agents a message
+    /// addressed have already had their chance to answer it.
+    /// </summary>
+    public static IReadOnlyList<string> MentionedMembers(string? body, IReadOnlyList<string> memberNames)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return [];
+
+        return [.. MentionRegex().Matches(body)
+            .Select(m => m.Groups[1].Value)
+            .Select(v => memberNames.FirstOrDefault(nm => string.Equals(nm, v, StringComparison.OrdinalIgnoreCase)))
+            .Where(nm => nm is not null)
+            .Select(nm => nm!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary>Strip surrounding markdown emphasis / quotes / code ticks and trailing sentence punctuation
