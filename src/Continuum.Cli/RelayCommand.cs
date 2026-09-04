@@ -31,9 +31,13 @@ public static partial class RelayCommand
     /// a hook that overruns is killed. So on expiry the relay hands the session a turn that answers
     /// PASS, which ends, which fires the Stop hook again, which waits afresh.
     ///
-    /// 40 cycles is a little over six hours of silence before the session is genuinely let go.
+    /// Four cycles — about thirty-seven minutes of silence — then the session is handed back. The
+    /// original forty (six hours) was chosen when the relay was the only way an agent could be
+    /// reached; the room runner now covers a room whose participants have gone home, so holding
+    /// someone's terminal hostage all day buys nothing. A blocking Stop hook is intrusive by nature:
+    /// it should be spent on delivering messages, not on waiting for them.
     /// </summary>
-    private const int KeepAliveCycles = 40;
+    private const int KeepAliveCycles = 4;
     private const int LargeMessageChars = 8000;
 
     /// <summary>A turn that showed work: a code block, or the vocabulary of a test result.</summary>
@@ -72,6 +76,17 @@ public static partial class RelayCommand
 
             var roomId = bind.RoomId;
             var agent = bind.Agent;
+
+            // Never drive an agent the daemon's room runner is already driving. Both at once is the
+            // worst of both: the runner posts the agent's messages, so the relay never has anything
+            // to deliver and does nothing but fire keep-alives — which seize the human's session
+            // every few minutes, forever, for no benefit. Seen for real: eight PASS cycles in a row
+            // in a session someone was trying to work in.
+            if (RunnerAgents.Load().Any(a => string.Equals(a.Name, agent, StringComparison.OrdinalIgnoreCase)))
+            {
+                Log($"'{agent}' is driven by the room runner; leaving the room to it and not relaying");
+                return 0;
+            }
 
             var cfg = Config.Load();
             if (cfg is null) { Log("not configured — run `continuum doctor`"); return 0; }
@@ -228,7 +243,8 @@ public static partial class RelayCommand
                 return 0;
             }
 
-            Log($"giving up after {state.KeepAlives} keep-alive cycles of silence; idling");
+            Log($"room quiet for {state.KeepAlives} cycles; releasing this session "
+                + "(rejoin with /continuum-joinroom, or let the room runner drive this agent)");
             state.Save(statePath);
             return 0;
         }
