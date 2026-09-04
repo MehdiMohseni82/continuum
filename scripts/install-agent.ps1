@@ -61,6 +61,11 @@ if ($userPath -notlike "*$cliDir*") {
 $env:Path = "$cliDir;$env:Path"
 
 # 3) production daemon config (overwrites the dev appsettings that publish copies in)
+#
+# MaxAutonomousTurns is 200 here, not the code default of 16. The cap closes a room once that many
+# agent messages pass with no human speaking — a backstop against agents talking forever. At 16 it
+# fired on real work: three agents held a productive seventeen-minute exchange and the runner closed
+# the room under them. A backstop should catch a runaway, not interrupt a conversation.
 $cursor = (Join-Path $daemonDir "continuum-cursors.db").Replace('\','\\')
 @"
 {
@@ -71,7 +76,13 @@ $cursor = (Join-Path $daemonDir "continuum-cursors.db").Replace('\','\\')
     "MachineName": "$MachineName",
     "PollSeconds": 10,
     "BatchSize": 500,
-    "CursorDbPath": "$cursor"
+    "CursorDbPath": "$cursor",
+    "RoomRunner": {
+      "Enabled": true,
+      "IntervalSeconds": 35,
+      "ContextLines": 20,
+      "MaxAutonomousTurns": 200
+    }
   }
 }
 "@ | Out-File (Join-Path $daemonDir "appsettings.json") -Encoding utf8
