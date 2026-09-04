@@ -137,6 +137,9 @@ fi
 DAEMON_DLL="$DAEMON_DIR/Continuum.Daemon.dll"
 if $IS_MAC; then
   echo "Installing launchd agent (RunAtLoad + KeepAlive)..."
+  # Built from the PATH of whoever runs the installer, so a machine with an unusual toolchain
+  # location still works, plus the standard directories in case this is run from a bare shell.
+  PATH_FOR_AGENT="$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/local/share/dotnet:$HOME/.dotnet:$HOME/.local/bin"
   PLIST="$HOME/Library/LaunchAgents/com.continuum.daemon.plist"
   mkdir -p "$HOME/Library/LaunchAgents"
   cat > "$PLIST" <<PLISTXML
@@ -151,6 +154,16 @@ if $IS_MAC; then
     <string>$DAEMON_DLL</string>
   </array>
   <key>WorkingDirectory</key><string>$DAEMON_DIR</string>
+  <!--
+    launchd hands a job PATH=/usr/bin:/bin:/usr/sbin:/sbin — no Homebrew, no ~/.local/bin, no dotnet.
+    The room runner spawns `claude`, whose MCP servers are registered as bare `dotnet <dll>`, so
+    without this every spawned agent came up with no Continuum tools and could not post to a room.
+    The runner also repairs the child PATH in code; this makes the daemon itself sane too.
+  -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$PATH_FOR_AGENT</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$DAEMON_DIR/daemon.out.log</string>

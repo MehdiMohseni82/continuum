@@ -241,6 +241,7 @@ public sealed class RoomRunnerService(
                 CreateNoWindow = true,
             };
             AddRuntimeArgs(psi, agent, prompt);
+            EnsureToolchainOnPath(psi);
 
             using var proc = new Process { StartInfo = psi };
             var sb = new StringBuilder();
@@ -265,6 +266,56 @@ public sealed class RoomRunnerService(
     }
 
     /// <summary>Headless invocation per runtime. Write-capability is enforced by flags where the runtime allows.</summary>
+    /// <summary>
+    /// Give the spawned CLI a PATH that can actually find its own MCP servers.
+    ///
+    /// <para>
+    /// A daemon started by launchd inherits <c>PATH=/usr/bin:/bin:/usr/sbin:/sbin</c> — no Homebrew, no
+    /// ~/.local/bin, no dotnet. The Continuum MCP server is registered as bare <c>dotnet &lt;dll&gt;</c>,
+    /// so every agent this spawned came up without it and reported "the dotnet executable is not on the
+    /// PATH". The agent still reasoned about the room; it simply had no tool with which to post, so it
+    /// was mute and looked like it was ignoring everyone.
+    /// </para>
+    /// <para>
+    /// Fixed here rather than only in the launchd plist, because the plist is written once at install
+    /// and says nothing about where a given machine keeps its toolchain. Only directories that exist
+    /// are added, so this is inert on Windows and on Linux.
+    /// </para>
+    /// </summary>
+    private void EnsureToolchainOnPath(ProcessStartInfo psi)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var sep = Path.PathSeparator;
+
+        var candidates = new List<string?>
+        {
+            Path.GetDirectoryName(psi.FileName),           // wherever we resolved claude/codex/cursor
+            "/opt/homebrew/bin",                            // Homebrew on Apple silicon
+            "/usr/local/bin",                               // Homebrew on Intel, and most manual installs
+            "/usr/local/share/dotnet",                      // the dotnet pkg installer
+            Path.Combine(home, ".dotnet"),
+            Path.Combine(home, ".local", "bin"),
+        };
+
+        var existing = psi.Environment.TryGetValue("PATH", out var p) && !string.IsNullOrEmpty(p)
+            ? p!.Split(sep, StringSplitOptions.RemoveEmptyEntries).ToList()
+            : [];
+
+        var added = new List<string>();
+        foreach (var dir in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir)) continue;
+            if (existing.Contains(dir, StringComparer.Ordinal)) continue;
+            if (added.Contains(dir, StringComparer.Ordinal)) continue;
+            added.Add(dir);
+        }
+
+        if (added.Count == 0) return;
+
+        psi.Environment["PATH"] = string.Join(sep, added.Concat(existing));
+        log.LogDebug("Room runner: added {Dirs} to the child PATH", string.Join(", ", added));
+    }
+
     private void AddRuntimeArgs(ProcessStartInfo psi, LocalAgent agent, string prompt)
     {
         switch (agent.Runtime.Trim().ToLowerInvariant())
