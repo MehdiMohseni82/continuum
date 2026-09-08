@@ -4,6 +4,9 @@ namespace Continuum.Core.Contracts;
 
 public sealed record CreateRoomRequest(string Name, string Topic, LanguageMode LanguageMode, string? Language, string? SystemPrompt = null);
 public sealed record AddMemberRequest(string Agent);
+
+/// <summary>Replace a room's standing framing. Null or blank clears it.</summary>
+public sealed record SetRoomSystemPromptRequest(string? SystemPrompt);
 public sealed record RoomPostRequest(string FromAgent, string Body,
     int? InputTokens = null, int? OutputTokens = null, int? CacheReadTokens = null, int? CacheCreationTokens = null);
 
