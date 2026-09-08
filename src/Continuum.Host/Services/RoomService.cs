@@ -188,6 +188,33 @@ public sealed class RoomService(ContinuumDbContext db, BusBroadcaster bus, ICurr
         return true;
     }
 
+    /// <summary>Cap on the standing framing. The column is unbounded text; this is a sanity limit.</summary>
+    private const int MaxSystemPrompt = 20_000;
+
+    /// <summary>
+    /// Replace a room's standing framing.
+    ///
+    /// <para>
+    /// Only room creation could set this, which made the membership list and the prompt drift apart the
+    /// moment anyone joined: a room whose prompt opens "You are one of three agents" and enumerates
+    /// their repositories under STRICT ownership rules is actively misleading to a fourth agent, who is
+    /// told it does not exist and given no territory of its own.
+    /// </para>
+    /// </summary>
+    public async Task<bool> SetSystemPromptAsync(Guid id, string? prompt, CancellationToken ct)
+    {
+        var room = await FindControlledAsync(id, ct);
+        if (room is null) return false;
+
+        var text = prompt?.Trim();
+        if (string.IsNullOrEmpty(text)) text = null;                       // clearing it is legitimate
+        else if (text.Length > MaxSystemPrompt) text = text[..MaxSystemPrompt];
+
+        room.SystemPrompt = text;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     /// <summary>
     /// Reopen a closed room, keeping every message it already holds.
     ///

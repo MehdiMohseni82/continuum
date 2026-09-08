@@ -225,6 +225,14 @@ public static class ApiEndpoints
         api.MapDelete("/rooms/{id:guid}/members/{agent}", async (Guid id, string agent, RoomService rooms, CancellationToken ct) =>
             await rooms.RemoveMemberAsync(id, agent, ct) ? Results.NoContent() : Results.NotFound());
 
+        // Only creation could set the framing, so the prompt and the membership list drifted apart the
+        // moment anyone joined — a prompt naming three agents is misleading to the fourth.
+        api.MapPut("/rooms/{id:guid}/system-prompt", async (
+            Guid id, SetRoomSystemPromptRequest req, RoomService rooms, CancellationToken ct) =>
+            await rooms.SetSystemPromptAsync(id, req.SystemPrompt, ct)
+                ? Results.NoContent()
+                : Results.NotFound());
+
         api.MapPost("/rooms/{id:guid}/close", async (Guid id, RoomService rooms, CancellationToken ct) =>
             await rooms.CloseAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
