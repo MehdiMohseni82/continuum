@@ -183,7 +183,14 @@ public static class RoomStatusCommand
 
         var unreachable = detail.Members.Count(m =>
             !driven.ContainsKey(m.Agent) && !listeners.ContainsKey(m.Agent));
-        var sleeping = listeners.Values.Count(l => DateTimeOffset.UtcNow - l.LastActive > Stale);
+        // Only count a sleeping relay for an agent the runner is NOT driving. A runner-driven agent
+        // may still have a stale relay state file lying about from before it was handed over, and
+        // counting that produced a verdict that contradicted the lines directly above it: four
+        // agents shown as having just posted, then "nothing will reach 1 of 4".
+        var sleeping = detail.Members.Count(m =>
+            !driven.ContainsKey(m.Agent)
+            && listeners.TryGetValue(m.Agent, out var l)
+            && DateTimeOffset.UtcNow - l.LastActive > Stale);
 
         if (room.Status != "open")
             Console.WriteLine("Nothing will move: the room is closed.");
