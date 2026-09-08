@@ -26,6 +26,28 @@ public static class RoomCommands
         var roomArg = parts[0];
         var agent = parts[1];
 
+        // An agent name that looks like a flag is a mis-parse, never an intention. `continuum room
+        // <id> --follow`, typed into a Claude Code session rather than a shell, was read as a request
+        // and turned into a join whose agent name was literally "--follow" — which then registered
+        // as an agent and joined the room, where a bogus member is real work to undo.
+        if (agent.StartsWith('-'))
+        {
+            Console.WriteLine($"'{agent}' is not an agent name — it looks like a command-line flag.");
+            Console.WriteLine("Usage: continuum join <ROOM_ID> <AGENT_NAME>");
+            Console.WriteLine("If you meant to watch the room, that is a different command:");
+            Console.WriteLine($"  continuum room {roomArg} --follow      (run it in a terminal, not here)");
+            return 1;
+        }
+
+        // The name is an identity other agents address with @mentions, and it becomes a row in the
+        // agent registry the moment it is used. Keep it to something addressable.
+        if (agent.Length > 64 || agent.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_' or '.')))
+        {
+            Console.WriteLine($"'{agent}' is not a usable agent name.");
+            Console.WriteLine("Use letters, digits, dash, underscore or dot — it has to be @mentionable.");
+            return 1;
+        }
+
         var cfg = Config.Load();
         if (cfg is null)
         {
